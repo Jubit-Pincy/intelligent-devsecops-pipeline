@@ -1,8 +1,12 @@
 pipeline {
     agent any
 
+    tools {
+        msbuildScanner 'SonarScanner for MSBuild'
+    }
+
     stages {
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 git branch: 'main',
                     credentialsId: 'github-jenkins',
@@ -10,13 +14,16 @@ pipeline {
             }
         }
 
-        stage('Build Application') {
+        stage('SonarQube Analysis') {
             steps {
-                sh '''
-                cd SecureApp
-                dotnet restore
-                dotnet build
-                '''
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                    dotnet $MSBUILD_SCANNER_HOME/SonarScanner.MSBuild.dll begin /k:"SecureApp"
+                    dotnet restore IntelligentDevSecOpsPipeline.sln
+                    dotnet build IntelligentDevSecOpsPipeline.sln
+                    dotnet $MSBUILD_SCANNER_HOME/SonarScanner.MSBuild.dll end
+                    '''
+                }
             }
         }
     }
