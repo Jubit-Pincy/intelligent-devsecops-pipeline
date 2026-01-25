@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        msbuildScanner 'SonarScanner for MSBuild'
+        MsBuildSQRunnerInstallation 'SonarScanner for MSBuild'
     }
 
     stages {
