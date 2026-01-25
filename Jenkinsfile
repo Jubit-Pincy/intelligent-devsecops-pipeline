@@ -1,9 +1,5 @@
-ṣpipeline {
+pipeline {
     agent any
-
-    tools {
-        MsBuildSQRunnerInstallation 'SonarScanner for MSBuild'
-    }
 
     stages {
         stage('Checkout') {
@@ -16,15 +12,20 @@
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh '''
-                    dotnet $MSBUILD_SCANNER_HOME/SonarScanner.MSBuild.dll begin /k:"SecureApp"
-                    dotnet restore IntelligentDevSecOpsPipeline.sln
-                    dotnet build IntelligentDevSecOpsPipeline.sln
-                    dotnet $MSBUILD_SCANNER_HOME/SonarScanner.MSBuild.dll end
-                    '''
+                script {
+                    def scannerHome = tool 'SonarScanner for MSBuild'
+
+                    withSonarQubeEnv('SonarQube') {
+                        sh """
+                        dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:"SecureApp"
+                        dotnet restore IntelligentDevSecOpsPipeline.sln
+                        dotnet build IntelligentDevSecOpsPipeline.sln
+                        dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
+                        """
+                    }
                 }
             }
         }
     }
 }
+
