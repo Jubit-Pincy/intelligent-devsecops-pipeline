@@ -30,7 +30,7 @@ pipeline {
 	stage('Risk Evaluation') {
 	    steps {
 		sh '''
-		python3 risk-engine/risk_analyzer.py
+		python3 risk-engine/risk-analyzer.py
 		'''
 		}
 	}
