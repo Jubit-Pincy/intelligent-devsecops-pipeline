@@ -10,15 +10,6 @@ pipeline {
             }
         }
 
-	stage('Risk Evaluation') {
-	    steps {
-		sh '''
-		python3 risk-engine/risk_analyzer.py
-		'''
-		}
-	}
-
-
         stage('SonarQube Analysis') {
             steps {
                 script {
@@ -35,6 +26,15 @@ pipeline {
                 }
             }
         }
+
+	stage('Risk Evaluation') {
+	    steps {
+		sh '''
+		python3 risk-engine/risk_analyzer.py
+		'''
+		}
+	}
+
     }
 }
 
