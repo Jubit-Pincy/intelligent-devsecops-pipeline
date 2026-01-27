@@ -19,7 +19,7 @@ pipeline {
                         sh """
                         dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:"SecureApp"
                         dotnet restore IntelligentDevSecOpsPipeline.sln
-                        dotnet build IntelligentDevSecOpsPipeline.sln
+                        dotnet test IntelligentDevSecOpsPipeline.sln
                         dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
                         """
                     }
