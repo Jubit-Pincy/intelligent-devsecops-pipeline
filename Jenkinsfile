@@ -29,9 +29,8 @@ pipeline {
 
 	stage('Risk Evaluation') {
 	    steps {
-		sh '''
-		python3 risk-engine/risk-analyzer.py
-		'''
+		withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            sh 'python3 risk-engine/risk-analyzer.py'
 		}
 	}
 

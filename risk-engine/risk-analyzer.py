@@ -3,6 +3,7 @@ import sys
 
 SONAR_URL = "http://localhost:9000"
 PROJECT_KEY = "SecureApp"
+SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 
 url = f"{SONAR_URL}/api/measures/component"
 params = {
