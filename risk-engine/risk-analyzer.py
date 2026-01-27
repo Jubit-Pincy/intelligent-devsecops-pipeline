@@ -12,7 +12,7 @@ params = {
     "metricKeys": "bugs,vulnerabilities,security_hotspots"
 }
 
-response = requests.get(url, params=params)
+response = requests.get(url, params=params, auth=(SONAR_TOKEN, ""))
 data = response.json()
 
 measures = data["component"]["measures"]
