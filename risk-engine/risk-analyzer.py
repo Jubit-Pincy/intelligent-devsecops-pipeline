@@ -2,7 +2,7 @@ import os
 import requests
 import sys
 
-SONAR_URL = "http://localhost:9000"
+SONAR_URL = "http://127.0.0.1:9000"
 PROJECT_KEY = "SecureApp"
 SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 
