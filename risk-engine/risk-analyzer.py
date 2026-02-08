@@ -35,9 +35,19 @@ print("Risk Score:", risk_score)
 print("Risk Level:", level)
 
 if level == "HIGH":
-    sys.exit(1)  # fail pipeline
+    decision = "BUILD BLOCKED DUE TO HIGH RISK"
+    exit_code = 1
+elif level == "MEDIUM":
+    decision = "BUILD APPROVED WITH WARNINGS"
+    exit_code = 0
+else:
+    decision = "BUILD APPROVED"
+    exit_code = 0
 
 os.makedirs("reports", exist_ok=True)
+
+print("Decision:", decision)
+sys.exit(exit_code)
 
 html = f"""
 <html>
@@ -71,7 +81,7 @@ h1 {{ color: #2c3e50; }}
 
 <h2>Decision</h2>
 <p>
-{"BUILD APPROVED" if level != "HIGH" else "BUILD BLOCKED DUE TO HIGH RISK"}
+{decision}
 </p>
 
 </body>
