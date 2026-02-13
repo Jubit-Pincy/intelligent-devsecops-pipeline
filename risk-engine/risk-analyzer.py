@@ -31,6 +31,25 @@ elif risk_score <= 5:
 else:
     level = "HIGH"
 
+if level == "HIGH":
+    summary = f"""
+    This build was BLOCKED because the system detected
+    {vulns} vulnerabilities, {bugs} bugs, and {hotspots} security hotspots.
+    Immediate remediation is required before deployment.
+    """
+elif level == "MEDIUM":
+    summary = f"""
+    This build was approved with warnings due to
+    {vulns} vulnerabilities, {bugs} bugs, and {hotspots} security hotspots.
+    Manual review is recommended.
+    """
+else:
+    summary = f"""
+    This build was approved as the detected issues
+    ({vulns} vulnerabilities, {bugs} bugs, {hotspots} hotspots)
+    are within acceptable risk thresholds.
+    """
+
 print("Risk Score:", risk_score)
 print("Risk Level:", level)
 
@@ -83,6 +102,9 @@ h1 {{ color: #2c3e50; }}
 <p>
 {decision}
 </p>
+
+<h2>Incident Summary</h2>
+<p>{summary}</p>
 
 </body>
 </html>
