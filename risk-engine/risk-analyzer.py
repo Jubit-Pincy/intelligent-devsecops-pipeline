@@ -127,6 +127,6 @@ h1 {{ color: #2c3e50; }}
 </body>
 </html>
 """
-
+print("SUMMARY:", summary)
 with open("reports/security-report.html", "w") as f:
     f.write(html)
