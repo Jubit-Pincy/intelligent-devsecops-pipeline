@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 import requests
 import sys
+import json
 
 SONAR_URL = "http://127.0.0.1:9000"
 PROJECT_KEY = "SecureApp"
@@ -22,6 +23,34 @@ bugs = int(measures[0]["value"])
 vulns = int(measures[1]["value"])
 hotspots = int(measures[2]["value"])
 risk_score = bugs*3 + vulns*5 + hotspots*2
+
+history_file = "reports/history.json"
+previous_score = None
+trend = "N/A"
+
+# Ensure reports folder exists
+os.makedirs("reports", exist_ok=True)
+
+# Load previous score if exists
+if os.path.exists(history_file):
+    with open(history_file, "r") as f:
+        history = json.load(f)
+        previous_score = history.get("last_risk_score")
+
+# Determine trend
+if previous_score is not None:
+    if risk_score > previous_score:
+        trend = "↑ Risk Increased"
+    elif risk_score < previous_score:
+        trend = "↓ Risk Reduced"
+    else:
+        trend = "→ Risk Stable"
+else:
+    trend = "First Analysis Run"
+
+# Save current score for next build
+with open(history_file, "w") as f:
+    json.dump({"last_risk_score": risk_score}, f)
 
 if risk_score == 0:
     level = "LOW"
@@ -84,7 +113,7 @@ else:
     """
 
 print("Decision:", decision)
-
+print("Risk Trend:", trend)
 
 html = f"""
 <html>
@@ -122,6 +151,9 @@ h1 {{ color: #2c3e50; }}
 
 <h2>Incident Summary</h2>
 <p>{summary}</p>
+
+<h3>Risk Trend</h3>
+<p>{trend}</p>
 
 </body>
 </html>
