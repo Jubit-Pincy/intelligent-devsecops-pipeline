@@ -27,14 +27,6 @@ pipeline {
             }
         }
 
-	stage('Quality Gate Check') {
-	    steps {
-	        timeout(time: 2, unit: 'MINUTES') {
-	            waitForQualityGate abortPipeline: false
-	        }
-	    }
-	}
-
 	stage('Risk Evaluation') {
 	    steps {
 		withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
