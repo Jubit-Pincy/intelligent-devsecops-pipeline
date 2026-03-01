@@ -84,12 +84,11 @@ else:
     """
 
 print("Decision:", decision)
-sys.exit(exit_code)
+
 
 html = f"""
 <html>
 <head>
-<title>Security Risk Report</title>
 <style>
 body {{ font-family: Arial; padding: 20px; }}
 h1 {{ color: #2c3e50; }}
@@ -130,3 +129,4 @@ h1 {{ color: #2c3e50; }}
 print("SUMMARY:", summary)
 with open("reports/security-report.html", "w") as f:
     f.write(html)
+sys.exit(exit_code)
