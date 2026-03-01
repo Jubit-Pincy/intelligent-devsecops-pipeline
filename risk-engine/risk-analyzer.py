@@ -21,7 +21,6 @@ measures = data["component"]["measures"]
 bugs = int(measures[0]["value"])
 vulns = int(measures[1]["value"])
 hotspots = int(measures[2]["value"])
-
 risk_score = bugs*3 + vulns*5 + hotspots*2
 
 if risk_score == 0:
@@ -64,6 +63,25 @@ else:
     exit_code = 0
 
 os.makedirs("reports", exist_ok=True)
+
+if level == "HIGH":
+    summary = f"""
+    This build was BLOCKED because the system detected
+    {vulns} vulnerabilities, {bugs} bugs, and {hotspots} security hotspots.
+    Immediate remediation is required before deployment.
+    """
+elif level == "MEDIUM":
+    summary = f"""
+    This build was approved with warnings due to
+    {vulns} vulnerabilities, {bugs} bugs, and {hotspots} security hotspots.
+    Manual review is recommended.
+    """
+else:
+    summary = f"""
+    This build was approved as the detected issues
+    ({vulns} vulnerabilities, {bugs} bugs, {hotspots} hotspots)
+    are within acceptable risk thresholds.
+    """
 
 print("Decision:", decision)
 sys.exit(exit_code)
