@@ -84,6 +84,8 @@ elif level == "LOW":
 print("Risk Score:", risk_score)
 print("Risk Level:", level)
 print("Governance Action:", decision)
+print("RAW SONAR RESPONSE:", data)
+
 if level == "HIGH":
     decision = "BUILD BLOCKED DUE TO HIGH RISK"
     exit_code = 1
