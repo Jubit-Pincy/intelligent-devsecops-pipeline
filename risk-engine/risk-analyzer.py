@@ -59,28 +59,31 @@ elif risk_score <= 5:
 else:
     level = "HIGH"
 
+# --- Adaptive Decision Logic ---
+
 if level == "HIGH":
-    summary = f"""
-    This build was BLOCKED because the system detected
-    {vulns} vulnerabilities, {bugs} bugs, and {hotspots} security hotspots.
-    Immediate remediation is required before deployment.
-    """
+    decision = "BUILD BLOCKED DUE TO HIGH RISK"
+    exit_code = 1
+
 elif level == "MEDIUM":
-    summary = f"""
-    This build was approved with warnings due to
-    {vulns} vulnerabilities, {bugs} bugs, and {hotspots} security hotspots.
-    Manual review is recommended.
-    """
-else:
-    summary = f"""
-    This build was approved as the detected issues
-    ({vulns} vulnerabilities, {bugs} bugs, {hotspots} hotspots)
-    are within acceptable risk thresholds.
-    """
+    if "Increased" in trend:
+        decision = "MANUAL SECURITY REVIEW REQUIRED (Risk Increasing)"
+        exit_code = 0
+    else:
+        decision = "BUILD APPROVED WITH WARNINGS"
+        exit_code = 0
+
+elif level == "LOW":
+    if "Increased" in trend:
+        decision = "BUILD APPROVED - MONITOR RISK (Increasing Trend)"
+        exit_code = 0
+    else:
+        decision = "BUILD APPROVED"
+        exit_code = 0
 
 print("Risk Score:", risk_score)
 print("Risk Level:", level)
-
+print("Governance Action:", decision)
 if level == "HIGH":
     decision = "BUILD BLOCKED DUE TO HIGH RISK"
     exit_code = 1
@@ -154,6 +157,9 @@ h1 {{ color: #2c3e50; }}
 
 <h3>Risk Trend</h3>
 <p>{trend}</p>
+
+<h2>Governance Decision</h2>
+<p><b>{decision}</b></p>
 
 </body>
 </html>
