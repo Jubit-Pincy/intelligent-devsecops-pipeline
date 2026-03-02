@@ -11,7 +11,8 @@ SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 url = f"{SONAR_URL}/api/measures/component"
 params = {
     "component": PROJECT_KEY,
-    "metricKeys": "bugs,vulnerabilities,security_hotspots"
+    "metricKeys": "bugs,vulnerabilities,security_hotspots",
+    "branch": "main"
 }
 
 response = requests.get(url, params=params, auth=(SONAR_TOKEN, ""))
