@@ -19,7 +19,8 @@ namespace SecureApp.Controllers
             return Ok(new
             {
                 message = "Login endpoint hit",
-                user = request.Username
+                user = request.Username;
+                int unusedValue = 10;
             });
         }
     }
