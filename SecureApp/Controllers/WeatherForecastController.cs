@@ -16,7 +16,9 @@ namespace SecureApp.Controllers
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequest request)
         {
-            int unusedValue = 10;
+            string name = null;
+            Console.WriteLine(name.Length);
+        
             return Ok(new
             {
                 message = "Login endpoint hit",
