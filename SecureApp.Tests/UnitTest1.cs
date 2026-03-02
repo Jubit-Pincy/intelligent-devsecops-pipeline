@@ -1,10 +1,13 @@
 using Xunit;
 
-public class BasicTest
+namespace SecureApp.Tests
 {
-    [Fact]
-    public void AlwaysPasses()
+    public class BasicTest
     {
-        Assert.True(true);
+        [Fact]
+        public void AlwaysPasses()
+        {
+            Assert.True(true);
+        }
     }
 }

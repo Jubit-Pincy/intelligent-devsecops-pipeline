@@ -17,7 +17,9 @@ pipeline {
 
                     withSonarQubeEnv('SonarQube') {
                         sh """
-                        dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:"SecureApp" /d:sonar.cs.opencover.reportsPaths=**/coverage.cobertura.xml
+                        dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin \  
+				/k:"SecureApp" \
+				/d:sonar.exclusions=reports/** /d:sonar.cs.opencover.reportsPaths=**/coverage.cobertura.xml
                         dotnet restore IntelligentDevSecOpsPipeline.sln
                         dotnet test IntelligentDevSecOpsPipeline.sln --collect:"XPlat Code Coverage"
                         dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
