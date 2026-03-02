@@ -119,8 +119,10 @@ print("Decision:", decision)
 print("Risk Trend:", trend)
 
 html = f"""
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
+<title>Bug  Report</title>
 <style>
 body {{ font-family: Arial; padding: 20px; }}
 h1 {{ color: #2c3e50; }}
