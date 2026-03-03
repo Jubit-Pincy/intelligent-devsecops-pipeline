@@ -16,9 +16,11 @@ namespace SecureApp.Controllers
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequest request)
         {
-            string password = "Admin123!";
-            string name = null;
-            Console.WriteLine(name.Length);
+            // High risk simulation
+            // string password = "Admin123!";
+            // Medium risk simulation
+            // string name = null;
+            // Console.WriteLine(name.Length);
 
             return Ok(new
             {
