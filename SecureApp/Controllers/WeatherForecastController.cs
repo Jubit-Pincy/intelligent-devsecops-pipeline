@@ -19,8 +19,8 @@ namespace SecureApp.Controllers
             // High risk simulation
             string password = "Admin123!";
             // Medium risk simulation
-            // string name = null;
-            // Console.WriteLine(name.Length);
+            string name = null;
+            Console.WriteLine(name.Length);
 
             return Ok(new
             {
