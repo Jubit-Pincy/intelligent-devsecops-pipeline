@@ -26,15 +26,45 @@ pipeline {
                 }
             }
         }
+        stage('Quality Gate Check') {
+            steps {
+                timeout(time: 2, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: false
+                }
+            }
+        }
 
 	stage('Risk Evaluation') {
-	    steps {
-		withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-            sh 'python3 risk-engine/risk-analyzer.py'
-		}
-	}
+    steps {
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            script {
+                def output = sh(
+                    script: 'python3 risk-engine/risk-analyzer.py',
+                    returnStdout: true
+                ).trim()
 
+                echo output
+
+                if (output.contains("BUILD BLOCKED")) {
+                    error("Pipeline stopped due to HIGH risk")
+                }
+
+                if (output.contains("MANUAL SECURITY REVIEW REQUIRED")) {
+                    currentBuild.result = 'UNSTABLE'
+                }
+            }
+        }
     }
+}
+stage('Deployment Simulation') {
+    when {
+        expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+    }
+    steps {
+        echo "Deploying application to STAGING environment..."
+        sh 'echo Deployment successful!'
+    }
+}
 }
 post {
     always {
