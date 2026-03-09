@@ -27,37 +27,45 @@ pipeline {
             }
         }
 
-	stage('Risk Evaluation') {
-        steps {
-            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                script {
-                    def output = sh(
-                        script: 'python3 risk-engine/risk-analyzer.py',
-                        returnStdout: true
-                    ).trim()
+	    stage('Risk Evaluation') {
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    script {
+                        def output = sh(
+                            script: 'python3 risk-engine/risk-analyzer.py',
+                            returnStdout: true
+                        ).trim()
 
-                    echo output
+                        echo output
 
-                    if (output.contains("BUILD BLOCKED")) {
-                        error("Pipeline stopped due to HIGH risk")
-                    }
+                        if (output.contains("BUILD BLOCKED")) {
+                            error("Pipeline stopped due to HIGH risk")
+                        }
 
-                    if (output.contains("MANUAL SECURITY REVIEW REQUIRED")) {
-                        currentBuild.result = 'UNSTABLE'
+                        if (output.contains("MANUAL SECURITY REVIEW REQUIRED")) {
+                            currentBuild.result = 'UNSTABLE'
+                        }
                     }
                 }
             }
         }
-    }
-    stage('Deployment Simulation') {
-        when {
-            expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-        }
+        stage('Deploy Application') {
         steps {
-            echo "Deploying application to STAGING environment..."
-            sh 'echo Deployment successful!'
+            // 1. Build locally with a memory limit if needed
+            sh 'docker build --no-cache -t secureapp .'
+
+            // 2. Atomic Swap (Stop and Start)
+            sh '''
+            docker stop secureapp-container || true
+            docker rm secureapp-container || true
+            docker run -d -p 8081:5000 --memory="512m" --name secureapp-container secureapp
+            '''
+
+            // 3. THE CLEANER: This is vital for 128GB storage
+            // This removes unused images and build cache immediately
+            sh 'docker image prune -f'
         }
-    }
+    }   
 }
 post {
     always {
