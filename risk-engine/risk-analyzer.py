@@ -137,7 +137,7 @@ html = f"""
 <title>SecureApp Security Dashboard</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+</head>
 <style>
 body {{
     font-family: 'Segoe UI', Arial, sans-serif;
