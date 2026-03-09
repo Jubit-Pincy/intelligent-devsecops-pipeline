@@ -121,54 +121,168 @@ else:
 print("Decision:", decision)
 print("Risk Trend:", trend)
 
+history_labels = []
+history_scores = []
+
+for entry in history:
+    history_labels.append(entry["timestamp"])
+    history_scores.append(entry["risk_score"])
+
 html = f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<title>Bug  Report</title>
+<meta charset="UTF-8">
+<title>SecureApp Security Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
-body {{ font-family: Arial; padding: 20px; }}
-h1 {{ color: #2c3e50; }}
-.low {{ color: green; }}
-.medium {{ color: orange; }}
-.high {{ color: red; }}
+body {{
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background:#f4f6f9;
+    margin:0;
+    padding:30px;
+}}
+
+.container {{
+    max-width:1100px;
+    margin:auto;
+}}
+
+.header {{
+    background:#1f2d3d;
+    color:white;
+    padding:20px;
+    border-radius:8px;
+}}
+
+.cards {{
+    display:flex;
+    gap:20px;
+    margin-top:20px;
+}}
+
+.card {{
+    background:white;
+    padding:20px;
+    border-radius:8px;
+    flex:1;
+    box-shadow:0 2px 8px rgba(0,0,0,0.1);
+    text-align:center;
+}}
+
+.metric {{
+    font-size:28px;
+    font-weight:bold;
+}}
+
+.low {{ color:#2ecc71; }}
+.medium {{ color:#f39c12; }}
+.high {{ color:#e74c3c; }}
+
+.section {{
+    background:white;
+    margin-top:20px;
+    padding:20px;
+    border-radius:8px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.1);
+}}
+
+.decision {{
+    font-size:20px;
+    font-weight:bold;
+}}
 </style>
 </head>
+
 <body>
-<h1>Executive Security Report</h1>
+
+<div class="container">
+
+<div class="header">
+<h1>Executive Security Dashboard</h1>
 <p><b>Project:</b> SecureApp</p>
-<p><b>Generated at:</b> {datetime.now()}</p>
+<p><b>Generated:</b> {datetime.now()}</p>
+</div>
 
-<h2>Findings</h2>
-<ul>
-  <li>Bugs: {bugs}</li>
-  <li>Vulnerabilities: {vulns}</li>
-  <li>Security Hotspots: {hotspots}</li>
-</ul>
+<div class="cards">
 
+<div class="card">
+<h3>Bugs</h3>
+<div class="metric">{bugs}</div>
+</div>
+
+<div class="card">
+<h3>Vulnerabilities</h3>
+<div class="metric">{vulns}</div>
+</div>
+
+<div class="card">
+<h3>Security Hotspots</h3>
+<div class="metric">{hotspots}</div>
+</div>
+
+<div class="card">
+<h3>Risk Score</h3>
+<div class="metric {level.lower()}">{risk_score}</div>
+</div>
+
+</div>
+
+<div class="section">
 <h2>Risk Evaluation</h2>
-<p><b>Risk Score:</b> {risk_score}</p>
+
 <p><b>Risk Level:</b>
 <span class="{level.lower()}">{level}</span>
 </p>
 
-<h2>Decision</h2>
-<p>
-{decision}
-</p>
+<p class="decision">{decision}</p>
 
-<h2>Incident Summary</h2>
+<h3>Incident Summary</h3>
 <p>{summary}</p>
+</div>
 
-<h3>Risk Trend</h3>
-<p>{trend}</p>
+<div class="section">
+<h2>Risk Trend</h2>
 
-<h2>Governance Decision</h2>
-<p><b>{decision}</b></p>
+<canvas id="riskChart"></canvas>
+
+</div>
+
+</div>
+
+<script>
+const ctx = document.getElementById('riskChart');
+
+new Chart(ctx, {{
+    type: 'line',
+    data: {{
+        labels: {history_labels},
+        datasets: [{{
+            label: 'Risk Score',
+            data: {history_scores},
+            borderColor: '#3498db',
+            backgroundColor: 'rgba(52,152,219,0.2)',
+            tension: 0.3,
+            fill: true
+        }}]
+    }},
+    options: {{
+        responsive: true,
+        scales: {{
+            y: {{
+                beginAtZero: true
+            }}
+        }}
+    }}
+}});
+</script>
 
 </body>
 </html>
 """
+
 print("SUMMARY:", summary)
 with open("reports/security-report.html", "w") as f:
     f.write(html)
