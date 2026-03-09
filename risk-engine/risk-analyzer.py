@@ -221,6 +221,12 @@ body {{
 .btn:hover {{
     opacity:0.85;
 }}
+
+.section canvas {{
+    max-width:400px;
+    margin:auto;
+    display:block;
+}}
 </style>
 </head>
 
@@ -232,6 +238,17 @@ body {{
 <h1>Security Report Summary Dashboard</h1>
 <p><b>Project:</b> SecureApp</p>
 <p><b>Generated:</b> {datetime.now()}</p>
+</div>
+
+<div class="section">
+<h2>Current Security Risk</h2>
+
+<canvas id="riskGauge" height="120"></canvas>
+
+<p style="text-align:center;font-weight:bold;margin-top:10px;">
+Current Risk Level: <span class="{level.lower()}">{level}</span>
+</p>
+
 </div>
 
 <div class="links">
@@ -317,6 +334,42 @@ new Chart(ctx, {{
         scales: {{
             y: {{
                 beginAtZero: true
+            }}
+        }}
+    }}
+}});
+
+const riskValue = {risk_score};
+
+let gaugeColor = "#2ecc71"; // green
+let mediumColor = "#f39c12";
+let highColor = "#e74c3c";
+
+if (riskValue > 5) {{
+    gaugeColor = highColor;
+}} else if (riskValue > 0) {{
+    gaugeColor = mediumColor;
+}}
+
+const gaugeCtx = document.getElementById('riskGauge');
+
+new Chart(gaugeCtx, {{
+    type: 'doughnut',
+    data: {{
+        labels: ["Risk Level","Remaining"],
+        datasets: [{{
+            data: [riskValue, 10-riskValue],
+            backgroundColor: [gaugeColor,"#ecf0f1"],
+            borderWidth: 0
+        }}]
+    }},
+    options: {{
+        circumference: 180,
+        rotation: 270,
+        cutout: "70%",
+        plugins: {{
+            legend: {{
+                display:false
             }}
         }}
     }}
