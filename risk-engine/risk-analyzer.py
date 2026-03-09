@@ -26,17 +26,21 @@ hotspots = int(measures[2]["value"])
 risk_score = bugs*3 + vulns*5 + hotspots*2
 
 history_file = "reports/history.json"
-previous_score = None
-trend = "N/A"
+history = []
 
 # Ensure reports folder exists
 os.makedirs("reports", exist_ok=True)
 
-# Load previous score if exists
+# Load history if exists
 if os.path.exists(history_file):
     with open(history_file, "r") as f:
-        history = json.load(f)
-        previous_score = history.get("last_risk_score")
+        try:
+            history = json.load(f)
+        except:
+            history = []
+
+# Determine previous score
+previous_score = history[-1]["risk_score"] if history else None
 
 # Determine trend
 if previous_score is not None:
@@ -49,9 +53,15 @@ if previous_score is not None:
 else:
     trend = "First Analysis Run"
 
-# Save current score for next build
+# Append new record
+history.append({
+    "timestamp": datetime.now().strftime("%H:%M:%S"),
+    "risk_score": risk_score
+})
+
+# Save updated history
 with open(history_file, "w") as f:
-    json.dump({"last_risk_score": risk_score}, f)
+    json.dump(history, f, indent=4)
 
 if risk_score == 0:
     level = "LOW"
@@ -87,15 +97,6 @@ print("Risk Level:", level)
 print("Governance Action:", decision)
 # print("RAW SONAR RESPONSE:", data)
 
-if level == "HIGH":
-    decision = "BUILD BLOCKED DUE TO HIGH RISK"
-    exit_code = 1
-elif level == "MEDIUM":
-    decision = "BUILD APPROVED WITH WARNINGS"
-    exit_code = 0
-else:
-    decision = "BUILD APPROVED"
-    exit_code = 0
 
 os.makedirs("reports", exist_ok=True)
 
@@ -121,13 +122,8 @@ else:
 print("Decision:", decision)
 print("Risk Trend:", trend)
 
-history_labels = []
-history_scores = []
-
-for entry in history:
-    if isinstance(entry, dict):
-        history_labels.append(entry.get("timestamp", "unknown"))
-        history_scores.append(entry.get("risk_score", 0))
+history_labels = [entry["timestamp"] for entry in history]
+history_scores = [entry["risk_score"] for entry in history]
 
 html = f"""
 <!DOCTYPE html>
