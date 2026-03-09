@@ -13,6 +13,8 @@ RUN adduser -D appuser
 WORKDIR /app
 COPY --from=build /app/publish .
 
+ENV ASPNETCORE_URLS=http://+:5000
+
 USER appuser
 
 ENTRYPOINT ["dotnet", "SecureApp.dll"]
