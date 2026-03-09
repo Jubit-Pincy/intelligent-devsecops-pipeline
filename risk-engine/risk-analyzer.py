@@ -5,6 +5,9 @@ import sys
 import json
 
 SONAR_URL = "http://127.0.0.1:9000"
+SONAR_DASHBOARD = "http://localhost:9000/dashboard?id=SecureApp"
+PROJECT_REPO = "https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline"
+RUNNING_APP = "http://localhost:8081/WeatherForecast/health"
 PROJECT_KEY = "SecureApp"
 SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 
@@ -147,9 +150,9 @@ body {{
 }}
 
 .header {{
-    background:#1f2d3d;
+    background: linear-gradient(90deg,#1f2d3d,#34495e);
     color:white;
-    padding:20px;
+    padding:25px;
     border-radius:8px;
 }}
 
@@ -189,6 +192,35 @@ body {{
     font-size:20px;
     font-weight:bold;
 }}
+.links {{
+    margin-top:15px;
+}}
+
+.btn {{
+    display:inline-block;
+    padding:10px 16px;
+    margin-right:10px;
+    border-radius:6px;
+    text-decoration:none;
+    font-weight:bold;
+    color:white;
+}}
+
+.btn-sonar {{
+    background:#4CAF50;
+}}
+
+.btn-app {{
+    background:#3498db;
+}}
+
+.btn-repo {{
+    background:#2c3e50;
+}}
+
+.btn:hover {{
+    opacity:0.85;
+}}
 </style>
 </head>
 
@@ -197,9 +229,25 @@ body {{
 <div class="container">
 
 <div class="header">
-<h1>Executive Security Dashboard</h1>
+<h1>Security Report Summary Dashboard</h1>
 <p><b>Project:</b> SecureApp</p>
 <p><b>Generated:</b> {datetime.now()}</p>
+</div>
+
+<div class="links">
+
+<a class="btn btn-sonar" href="{SONAR_DASHBOARD}" target="_blank">
+View SonarQube Report
+</a>
+
+<a class="btn btn-app" href="{RUNNING_APP}" target="_blank">
+Open Running Application
+</a>
+
+<a class="btn btn-repo" href="{PROJECT_REPO}" target="_blank">
+View GitHub Repository
+</a>
+
 </div>
 
 <div class="cards">
