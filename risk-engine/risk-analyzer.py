@@ -125,8 +125,9 @@ history_labels = []
 history_scores = []
 
 for entry in history:
-    history_labels.append(entry["timestamp"])
-    history_scores.append(entry["risk_score"])
+    if isinstance(entry, dict):
+        history_labels.append(entry.get("timestamp", "unknown"))
+        history_scores.append(entry.get("risk_score", 0))
 
 html = f"""
 <!DOCTYPE html>
