@@ -58,7 +58,7 @@ else:
 
 # Append new record
 history.append({
-    "timestamp": datetime.now().strftime("%H:%M:%S"),
+    "timestamp": datetime.now().astimezone().strftime("%H:%M:%S"),
     "risk_score": risk_score
 })
 
@@ -229,6 +229,29 @@ body {{
     margin:auto;
     display:block;
 }}
+
+.pipeline {{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-top:15px;
+}}
+
+.stage {{
+    background:#3498db;
+    color:white;
+    padding:10px 18px;
+    border-radius:6px;
+    font-weight:bold;
+}}
+
+.arrow {{
+    font-size:20px;
+    font-weight:bold;
+}}
+
 </style>
 </head>
 
@@ -239,7 +262,7 @@ body {{
 <div class="header">
 <h1>Security Report Summary Dashboard</h1>
 <p><b>Project:</b> SecureApp</p>
-<p><b>Generated:</b> {datetime.now()}</p>
+<p><b>Generated:</b> {datetime.now().astimezone()}</p>
 </div>
 
 <div class="section">
@@ -281,6 +304,30 @@ Open Running Application
 <a class="btn btn-repo" href="{PROJECT_REPO}" target="_blank">
 View GitHub Repository
 </a>
+
+</div>
+
+<div class="section">
+
+<h2 style="text-align:center;">Pipeline Execution Flow</h2>
+
+<div class="pipeline">
+
+<div class="stage">Code</div>
+<div class="arrow">→</div>
+
+<div class="stage">Build</div>
+<div class="arrow">→</div>
+
+<div class="stage">Security Scan</div>
+<div class="arrow">→</div>
+
+<div class="stage">Risk Analysis</div>
+<div class="arrow">→</div>
+
+<div class="stage">Deployment</div>
+
+</div>
 
 </div>
 
