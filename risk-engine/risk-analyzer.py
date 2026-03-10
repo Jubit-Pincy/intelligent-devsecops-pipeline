@@ -330,7 +330,7 @@ View GitHub Repository
 
 <script>
 
-const riskValue = {{risk_score}};
+const riskValue = {risk_score};
 
 let gaugeColor = "#2ecc71";
 let mediumColor = "#f39c12";
@@ -350,10 +350,10 @@ const trendCtx = document.getElementById('riskChart');
 new Chart(trendCtx, {{
     type: 'line',
     data: {{
-        labels: {{history_labels}},
+        labels: {history_labels},
         datasets: [{{
             label: 'Risk Score',
-            data: {{history_scores}},
+            data: {history_scores},
             borderColor: '#3498db',
             backgroundColor: 'rgba(52,152,219,0.2)',
             tension: 0.3,
