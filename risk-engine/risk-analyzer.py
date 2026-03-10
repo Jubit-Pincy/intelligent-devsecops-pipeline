@@ -223,7 +223,9 @@ body {{
 }}
 
 .section canvas {{
-    max-width:400px;
+    width:100% !important;
+    max-width:900px;
+    height:400px !important;
     margin:auto;
     display:block;
 }}
@@ -320,9 +322,11 @@ View GitHub Repository
 </div>
 
 <div class="section">
-<h2>Risk Trend</h2>
+<h2 style="text-align:center;">Risk Trend</h2>
 
+<div style="max-width:900px;margin:auto;">
 <canvas id="riskChart"></canvas>
+</div>
 
 </div>
 
