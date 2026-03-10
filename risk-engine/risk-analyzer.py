@@ -36,12 +36,12 @@ os.makedirs("reports", exist_ok=True)
 
 # Load history if exists
 if os.path.exists(history_file):
-    with open(history_file, "r") as f:
-        try:
+    history = []
+    try:
+        with open(history_file, "r") as f:
             history = json.load(f)
-        except:
-            history = []
-
+    except (json.JSONDecodeError, FileNotFoundError):
+        history = []
 # Determine previous score
 previous_score = history[-1]["risk_score"] if history else None
 
