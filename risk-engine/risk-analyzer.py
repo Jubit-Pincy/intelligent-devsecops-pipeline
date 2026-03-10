@@ -100,9 +100,6 @@ print("Risk Level:", level)
 print("Governance Action:", decision)
 # print("RAW SONAR RESPONSE:", data)
 
-
-os.makedirs("reports", exist_ok=True)
-
 if level == "HIGH":
     summary = f"""
     This build was BLOCKED because the system detected
@@ -332,15 +329,31 @@ View GitHub Repository
 </div>
 
 <script>
-const ctx = document.getElementById('riskChart');
 
-new Chart(ctx, {{
+const riskValue = {{risk_score}};
+
+let gaugeColor = "#2ecc71";
+let mediumColor = "#f39c12";
+let highColor = "#e74c3c";
+
+if (riskValue > 5) {{
+    gaugeColor = highColor;
+}}
+else if (riskValue > 0) {{
+    gaugeColor = mediumColor;
+}}
+
+/* ---------------- RISK TREND GRAPH ---------------- */
+
+const trendCtx = document.getElementById('riskChart');
+
+new Chart(trendCtx, {{
     type: 'line',
     data: {{
-        labels: {history_labels},
+        labels: {{history_labels}},
         datasets: [{{
             label: 'Risk Score',
-            data: {history_scores},
+            data: {{history_scores}},
             borderColor: '#3498db',
             backgroundColor: 'rgba(52,152,219,0.2)',
             tension: 0.3,
@@ -357,30 +370,7 @@ new Chart(ctx, {{
     }}
 }});
 
-const riskValue = {risk_score};
-
-let gaugeColor = "#2ecc71"; // green
-let mediumColor = "#f39c12";
-let highColor = "#e74c3c";
-
-if (riskValue > 5) {{
-    gaugeColor = highColor;
-}} else if (riskValue > 0) {{
-    gaugeColor = mediumColor;
-}}
-
-const riskValue = {risk_score};
-
-let gaugeColor = "#2ecc71";
-let mediumColor = "#f39c12";
-let highColor = "#e74c3c";
-
-if (riskValue > 5) {{
-    gaugeColor = highColor;
-}}
-else if (riskValue > 0) {{
-    gaugeColor = mediumColor;
-}}
+/* ---------------- RISK GAUGE ---------------- */
 
 const gaugeCtx = document.getElementById('riskGauge');
 
@@ -391,20 +381,21 @@ new Chart(gaugeCtx, {{
         datasets: [{{
             data: [riskValue, 10-riskValue],
             backgroundColor: [gaugeColor,"#ecf0f1"],
-            borderWidth:0
+            borderWidth: 0
         }}]
     }},
     options: {{
-        circumference:180,
-        rotation:270,
-        cutout:"75%",
-        plugins:{{
-            legend:{{
-                display:false
+        circumference: 180,
+        rotation: 270,
+        cutout: "75%",
+        plugins: {{
+            legend: {{
+                display: false
             }}
         }}
     }}
 }});
+
 </script>
 
 </body>
