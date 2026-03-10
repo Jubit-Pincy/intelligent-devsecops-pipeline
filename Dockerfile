@@ -1,7 +1,9 @@
 # STAGE 1: Build (The "Heavy" part)
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-COPY . .
+WORKDIR /src
+COPY SecureApp/ SecureApp/
+COPY IntelligentDevSecOpsPipeline.sln .
 # Restore and Publish in one go to save space
 RUN dotnet publish "SecureApp/SecureApp.csproj" -c Release -o /app/publish
 

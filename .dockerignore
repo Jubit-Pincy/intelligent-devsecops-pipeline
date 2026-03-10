@@ -4,6 +4,7 @@ node_modules
 bin
 obj
 reports
+risk-engine
 *.md
 *.log
 Dockerfile
