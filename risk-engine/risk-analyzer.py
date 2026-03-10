@@ -66,7 +66,7 @@ history.append({
 with open(history_file, "w") as f:
     json.dump(history, f, indent=4)
 
-if risk_score == 0:
+if risk_score <= 2:
     level = "LOW"
 elif risk_score <= 5:
     level = "MEDIUM"
@@ -339,8 +339,11 @@ let highColor = "#e74c3c";
 if (riskValue > 5) {{
     gaugeColor = highColor;
 }}
-else if (riskValue > 0) {{
+else if (riskValue > 2) {{
     gaugeColor = mediumColor;
+}}
+else {{
+    gaugeColor = "#2ecc71";
 }}
 
 /* ---------------- RISK TREND GRAPH ---------------- */
