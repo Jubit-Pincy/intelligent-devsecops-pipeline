@@ -12,7 +12,6 @@ PROJECT_KEY = "SecureApp"
 SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 
 IST = timezone(timedelta(hours=5, minutes=30))
-generated_time = datetime.now(IST).strftime("%d-%m-%Y %H:%M:%S")
 
 url = f"{SONAR_URL}/api/measures/component"
 params = {
@@ -61,13 +60,13 @@ else:
 
 # Append new record
 history.append({
-    "timestamp": {generated_time},
+    "timestamp": datetime.now(IST).strftime("%d-%m-%Y %H:%M:%S"),
     "risk_score": risk_score
 })
 
 # Save updated history
 with open(history_file, "w") as f:
-    json.dump(history, f, indent=4)
+    json.dump(history, f, indent=4, default=str)
 
 if risk_score <= 2:
     level = "LOW"
@@ -256,7 +255,7 @@ body {{
 <div class="header">
 <h1>Security Report Summary Dashboard</h1>
 <p><b>Project:</b> SecureApp</p>
-<p><b>Generated:</b> {generated_time}</p>
+<p><b>Generated:</b> {datetime.now(IST).strftime("%d-%m-%Y %H:%M:%S")}</p>
 </div>
 
 <div class="section">
