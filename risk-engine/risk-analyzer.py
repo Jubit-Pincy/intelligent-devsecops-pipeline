@@ -194,6 +194,7 @@ body {{
 }}
 .links {{
     margin-top:15px;
+    text-align: center
 }}
 
 .btn {{
@@ -204,6 +205,7 @@ body {{
     text-decoration:none;
     font-weight:bold;
     color:white;
+    transition:0.2s;
 }}
 
 .btn-sonar {{
@@ -220,6 +222,7 @@ body {{
 
 .btn:hover {{
     opacity:0.85;
+    transform:scale(1.05);
 }}
 
 .section canvas {{
@@ -241,12 +244,27 @@ body {{
 </div>
 
 <div class="section">
-<h2>Current Security Risk</h2>
+<h2 style="text-align:center;">Current Security Risk</h2>
 
-<canvas id="riskGauge" height="120"></canvas>
+<div style="position:relative;width:320px;margin:auto;">
+<canvas id="riskGauge"></canvas>
+
+<div id="gaugeScore"
+style="
+position:absolute;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+font-size:28px;
+font-weight:bold;
+">
+{risk_score}
+</div>
+
+</div>
 
 <p style="text-align:center;font-weight:bold;margin-top:10px;">
-Current Risk Level: <span class="{level.lower()}">{level}</span>
+Risk Level: <span class="{level.lower()}">{level}</span>
 </p>
 
 </div>
@@ -351,24 +369,37 @@ if (riskValue > 5) {{
     gaugeColor = mediumColor;
 }}
 
+const riskValue = {risk_score};
+
+let gaugeColor = "#2ecc71";
+let mediumColor = "#f39c12";
+let highColor = "#e74c3c";
+
+if (riskValue > 5) {{
+    gaugeColor = highColor;
+}}
+else if (riskValue > 0) {{
+    gaugeColor = mediumColor;
+}}
+
 const gaugeCtx = document.getElementById('riskGauge');
 
 new Chart(gaugeCtx, {{
     type: 'doughnut',
     data: {{
-        labels: ["Risk Level","Remaining"],
+        labels: ["Risk","Remaining"],
         datasets: [{{
             data: [riskValue, 10-riskValue],
             backgroundColor: [gaugeColor,"#ecf0f1"],
-            borderWidth: 0
+            borderWidth:0
         }}]
     }},
     options: {{
-        circumference: 180,
-        rotation: 270,
-        cutout: "70%",
-        plugins: {{
-            legend: {{
+        circumference:180,
+        rotation:270,
+        cutout:"75%",
+        plugins:{{
+            legend:{{
                 display:false
             }}
         }}
