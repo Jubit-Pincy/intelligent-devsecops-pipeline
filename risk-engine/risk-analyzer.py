@@ -11,6 +11,8 @@ RUNNING_APP = "http://localhost:8081/WeatherForecast/health"
 PROJECT_KEY = "SecureApp"
 SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 
+generated_time = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
 url = f"{SONAR_URL}/api/measures/component"
 params = {
     "component": PROJECT_KEY,
@@ -58,7 +60,7 @@ else:
 
 # Append new record
 history.append({
-    "timestamp": datetime.now().astimezone().strftime("%H:%M:%S"),
+    "timestamp": {generated_time},
     "risk_score": risk_score
 })
 
@@ -222,12 +224,24 @@ body {{
     transform:scale(1.05);
 }}
 
-.section canvas {{
+/* Risk trend chart */
+#riskChart {{
     width:100% !important;
     max-width:900px;
     height:400px !important;
     margin:auto;
     display:block;
+}}
+
+/* Gauge size */
+#gaugeContainer {{
+    width:260px;
+    margin:auto;
+}}
+
+#riskGauge {{
+    width:260px !important;
+    height:130px !important;
 }}
 </style>
 </head>
@@ -239,22 +253,22 @@ body {{
 <div class="header">
 <h1>Security Report Summary Dashboard</h1>
 <p><b>Project:</b> SecureApp</p>
-<p><b>Generated:</b> {datetime.now().astimezone()}</p>
+<p><b>Generated:</b> {generated_time}</p>
 </div>
 
 <div class="section">
 <h2 style="text-align:center;">Current Security Risk</h2>
 
-<div style="position:relative;width:320px;margin:auto;">
+<div id="gaugeContainer" style="position:relative;">
 <canvas id="riskGauge"></canvas>
 
 <div id="gaugeScore"
 style="
 position:absolute;
-top:50%;
+top:65%;
 left:50%;
 transform:translate(-50%,-50%);
-font-size:28px;
+font-size:32px;
 font-weight:bold;
 ">
 {risk_score}
