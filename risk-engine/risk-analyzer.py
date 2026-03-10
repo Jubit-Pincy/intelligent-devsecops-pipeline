@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 import requests
 import sys
@@ -11,7 +11,8 @@ RUNNING_APP = "http://localhost:8081/WeatherForecast/health"
 PROJECT_KEY = "SecureApp"
 SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 
-generated_time = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+IST = timezone(timedelta(hours=5, minutes=30))
+generated_time = datetime.now(IST).strftime("%d-%m-%Y %H:%M:%S")
 
 url = f"{SONAR_URL}/api/measures/component"
 params = {
@@ -224,24 +225,26 @@ body {{
     transform:scale(1.05);
 }}
 
-/* Risk trend chart */
+/* Trend chart styling */
 #riskChart {{
-    width:100% !important;
+    width:100%;
     max-width:900px;
-    height:400px !important;
+    height:400px;
     margin:auto;
     display:block;
 }}
 
-/* Gauge size */
+/* Gauge container */
 #gaugeContainer {{
     width:260px;
     margin:auto;
+    position:relative;
 }}
 
+/* Gauge canvas */
 #riskGauge {{
-    width:260px !important;
-    height:130px !important;
+    width:260px;
+    height:130px;
 }}
 </style>
 </head>
@@ -259,7 +262,7 @@ body {{
 <div class="section">
 <h2 style="text-align:center;">Current Security Risk</h2>
 
-<div id="gaugeContainer" style="position:relative;">
+<div id="gaugeContainer"">
 <canvas id="riskGauge"></canvas>
 
 <div id="gaugeScore"
