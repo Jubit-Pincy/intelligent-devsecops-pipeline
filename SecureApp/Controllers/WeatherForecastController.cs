@@ -18,7 +18,7 @@ namespace SecureApp.Controllers
         {
             return Ok(new
             {
-                string password = "Admin123!";
+                string password = "Admin123!",
                 message = "Login endpoint hit",
                 user = request.Username
             });
