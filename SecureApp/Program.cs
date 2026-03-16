@@ -16,9 +16,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
 // IMPORTANT: This maps controller routes
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.MapControllers();
 
 app.Run();

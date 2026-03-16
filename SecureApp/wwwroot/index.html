@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Weather Dashboard</title>
+
+<style>
+
+body{
+    margin:0;
+    font-family:Segoe UI,Arial;
+    background: linear-gradient(120deg,#3a7bd5,#00d2ff);
+    color:white;
+    min-height:100%;
+    background-repeat:no-repeat;
+    background-attachment:fixed;
+}
+
+.container{
+    max-width:600px;
+    height: 100%;
+    margin:auto;
+    margin-top:60px;
+    text-align:center;
+}
+
+h1{
+    margin-bottom:20px;
+}
+
+.search-box{
+    background:white;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.15);
+}
+
+input{
+    padding:12px;
+    width:70%;
+    border:none;
+    border-radius:6px;
+    font-size:18px;
+}
+
+input:focus{
+    outline: none;
+}
+
+button{
+    padding:12px 20px;
+    border:none;
+    background:#3498db;
+    color:white;
+    border-radius:6px;
+    cursor:pointer;
+    font-size:16px;
+}
+
+button:hover{
+    background:#2980b9;
+}
+
+.weather-card{
+    margin-top:30px;
+    background:rgba(255,255,255,0.2);
+    backdrop-filter:blur(12px);
+    padding:30px;
+    border-radius:14px;
+    display:none;
+    box-shadow:0 10px 25px rgba(0,0,0,0.25);
+}
+
+.temp{
+    font-size:48px;
+    font-weight:bold;
+    margin-top:10px;
+    animation: glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow{
+    from{
+        text-shadow:0 0 5px rgba(255,255,255,0.4);
+    }
+    to{
+        text-shadow:0 0 20px rgba(255,255,255,0.9);
+    }
+}
+
+.details{
+    margin-top:10px;
+    font-size:18px;
+}
+
+/* Spinner */
+
+.spinner{
+    margin-top:30px;
+    display:none;
+}
+
+.weather-icon{
+    font-size:60px;
+    margin:10px 0;
+}
+
+.loader{
+    border:6px solid #f3f3f3;
+    border-top:6px solid #3498db;
+    border-radius:50%;
+    width:40px;
+    height:40px;
+    animation:spin 1s linear infinite;
+    margin:auto;
+}
+
+@keyframes spin{
+    0%{transform:rotate(0deg);}
+    100%{transform:rotate(360deg);}
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Weather Dashboard</h1>
+
+<div class="search-box">
+
+<input id="city" placeholder="Enter city (e.g., Kochi)" type="text">
+<button onclick="getWeather()">Get Weather</button>
+
+</div>
+
+<div class="spinner" id="spinner">
+<div class="loader"></div>
+<p>Fetching weather data...</p>
+</div>
+
+<div class="weather-card" id="weatherCard">
+
+<h2 id="cityName"></h2>
+
+<div id="weatherIcon" class="weather-icon">☀️</div>
+
+<div class="temp" id="temperature"></div>
+
+<div class="details" id="condition"></div>
+
+<div class="details" id="humidity"></div>
+
+</div>
+
+</div>
+
+<script>
+
+async function getWeather(){
+
+const city=document.getElementById("city").value;
+
+if(!city) return;
+
+const spinner=document.getElementById("spinner");
+const card=document.getElementById("weatherCard");
+
+card.style.display="none";
+spinner.style.display="block";
+
+try{
+
+const response=await fetch(`/weather/${city}`);
+
+const data=await response.json();
+
+const weather=data.current_condition[0];
+
+const condition = weather.weatherDesc[0].value.toLowerCase();
+
+let icon = "☀️";
+
+if(condition.includes("cloud"))
+    icon = "☁️";
+
+else if(condition.includes("rain"))
+    icon = "🌧️";
+
+else if(condition.includes("snow"))
+    icon = "❄️";
+
+else if(condition.includes("storm"))
+    icon = "⛈️";
+
+document.getElementById("weatherIcon").innerText = icon;
+
+document.getElementById("cityName").innerText=city;
+
+document.getElementById("temperature").innerText=
+weather.temp_C+" °C";
+
+document.getElementById("condition").innerText=
+"Condition: "+weather.weatherDesc[0].value;
+
+document.getElementById("humidity").innerText=
+"Humidity: "+weather.humidity+"%";
+
+spinner.style.display="none";
+
+card.style.display="block";
+
+}
+catch(e){
+
+spinner.style.display="none";
+
+alert("Could not load weather data");
+
+}
+
+}
+
+</script>
+
+</body>
+</html>
