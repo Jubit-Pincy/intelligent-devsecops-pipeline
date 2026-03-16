@@ -16,9 +16,10 @@ namespace SecureApp.Controllers
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequest request)
         {
+            // High risk simulation
+            string password = "Admin123!";
             return Ok(new
             {
-                string password = "Admin123!",
                 message = "Login endpoint hit",
                 user = request.Username
             });
