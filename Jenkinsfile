@@ -27,6 +27,37 @@ pipeline {
             }
         }
 
+        stage('Wait for Sonar Processing') {
+            steps {
+                script {
+                    sh '''
+                    echo "Waiting for Sonar analysis to finish..."
+        
+                    TASK_ID=$(grep -oP 'ce/task\\?id=\\K.*' .sonarqube/out/.sonar/report-task.txt)
+        
+                    STATUS="PENDING"
+        
+                    while [ "$STATUS" != "SUCCESS" ]; do
+                        STATUS=$(curl -s -u $SONAR_TOKEN: \
+                        "http://localhost:9000/api/ce/task?id=$TASK_ID" \
+                        | jq -r '.task.status')
+        
+                        echo "Sonar status: $STATUS"
+        
+                        if [ "$STATUS" = "FAILED" ]; then
+                            echo "Sonar analysis failed"
+                            exit 1
+                        fi
+        
+                        sleep 3
+                    done
+        
+                    echo "Sonar analysis completed."
+                    '''
+                }
+            }
+        }
+
 	    stage('Risk Evaluation') {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {

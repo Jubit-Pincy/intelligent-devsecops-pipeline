@@ -7,7 +7,7 @@ import json
 SONAR_URL = "http://127.0.0.1:9000"
 SONAR_DASHBOARD = "http://localhost:9000/dashboard?id=SecureApp"
 PROJECT_REPO = "https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline"
-RUNNING_APP = "http://localhost:8081/WeatherForecast/health"
+RUNNING_APP = "http://localhost:8081/"
 PROJECT_KEY = "SecureApp"
 SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 
