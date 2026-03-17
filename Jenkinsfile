@@ -27,7 +27,6 @@ pipeline {
                         sh """
                         dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin \
                             /k:"${PROJECT_KEY}" \
-                            /d:sonar.host.url="${SONAR_URL}" \
                             /d:sonar.exclusions=reports/**,**/bin/**,**/obj/**
                         dotnet restore IntelligentDevSecOpsPipeline.sln
                         dotnet test IntelligentDevSecOpsPipeline.sln --collect:"XPlat Code Coverage"
