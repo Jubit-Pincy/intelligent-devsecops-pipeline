@@ -28,7 +28,7 @@ pipeline {
                         dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin \
                             /k:"${PROJECT_KEY}" \
                             /d:sonar.host.url="${SONAR_URL}" \
-                            /d:sonar.exclusions=reports/**,**/bin/**,**/obj/** /d:sonar.exclusions=reports/**
+                            /d:sonar.exclusions=reports/**,**/bin/**,**/obj/**
                         dotnet restore IntelligentDevSecOpsPipeline.sln
                         dotnet test IntelligentDevSecOpsPipeline.sln --collect:"XPlat Code Coverage"
                         dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
@@ -89,18 +89,18 @@ pipeline {
                             export SONAR_TOKEN=$SONAR_TOKEN
                             export PROJECT_KEY=$PROJECT_KEY
                             export SONAR_URL=$SONAR_URL
-        
+
                             python3 risk-engine/risk-analyzer.py
                             ''',
                             returnStdout: true
                         ).trim()
-        
+
                         echo output
-        
+
                         if (output.contains("BUILD BLOCKED")) {
                             error("Pipeline stopped due to HIGH risk")
                         }
-        
+
                         if (output.contains("MANUAL SECURITY REVIEW REQUIRED")) {
                             currentBuild.result = 'UNSTABLE'
                         }
