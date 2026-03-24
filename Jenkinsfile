@@ -9,6 +9,9 @@ pipeline {
     }
     agent any
 
+    echo "TASK_ID: $TASK_ID"
+    echo "SONAR_HOST_URL: $SONAR_HOST_URL"
+
     stages {
         stage('Checkout') {
             steps {
@@ -64,7 +67,7 @@ pipeline {
                             fi
 
                             COUNT=$((COUNT+1))
-                            sleep 2
+                            sleep 3
                         done
 
                         if [ "$STATUS" != "SUCCESS" ]; then
