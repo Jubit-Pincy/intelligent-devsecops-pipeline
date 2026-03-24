@@ -8,10 +8,7 @@ pipeline {
     SONAR_URL = "${params.SONAR_URL}"
     }
     agent any
-
-    echo "TASK_ID: $TASK_ID"
-    echo "SONAR_HOST_URL: $SONAR_HOST_URL"
-
+    
     stages {
         stage('Checkout') {
             steps {
@@ -45,6 +42,8 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     script {
                         sh '''
+                        echo "TASK_ID: $TASK_ID"
+                        echo "SONAR_HOST_URL: $SONAR_HOST_URL"
                         echo "Waiting for Sonar analysis to finish..."
 
                         TASK_ID=$(grep -oP 'ce/task\\?id=\\K.*' .sonarqube/out/.sonar/report-task.txt)
