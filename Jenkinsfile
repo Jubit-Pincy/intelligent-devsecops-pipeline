@@ -24,10 +24,8 @@ pipeline {
                     def scannerHome = tool 'SonarScanner for MSBuild'
 
                     withSonarQubeEnv('SonarQube') {
-                        script{
-                            env.SONAR_URL = env.SONAR_HOST_URL
-                        }
-                        sh """
+                       
+                       sh """
                         dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin \
                             /k:"${PROJECT_KEY}" \
                             /d:sonar.exclusions=reports/**,**/bin/**,**/obj/**
@@ -46,12 +44,14 @@ pipeline {
                     script {
                         sh '''
                         echo "Waiting for Sonar analysis to finish..."
-
+                        
                         TASK_ID=$(awk -F= '/ceTaskId/ {print $2}' .sonarqube/out/.sonar/report-task.txt)
 
                         STATUS="PENDING"
                         COUNT=0
                         MAX_ATTEMPTS=20
+
+                        echo "Using SONAR_URL: $SONAR_URL"
 
                         while [ "$STATUS" != "SUCCESS" ] && [ $COUNT -lt $MAX_ATTEMPTS ]; do
 
@@ -70,7 +70,7 @@ pipeline {
                             sleep 3
                         done
                         echo "TASK_ID: $TASK_ID"
-                        echo "SONAR_HOST_URL: $SONAR_HOST_URL"
+                        echo "SONAR_URL: $SONAR_URL"
                         if [ "$STATUS" != "SUCCESS" ]; then
                             echo "Sonar analysis timeout"
                             exit 1
