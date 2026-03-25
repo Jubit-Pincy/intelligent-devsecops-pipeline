@@ -42,7 +42,7 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     script {
-                        sh """
+                        sh '''
                         echo "Waiting for Sonar analysis to finish..."
                         
                         TASK_ID=$(awk -F= '/ceTaskId/ {print $2}' .sonarqube/out/.sonar/report-task.txt)
@@ -77,7 +77,7 @@ pipeline {
                         fi
 
                         echo "Sonar analysis completed."
-                        """
+                        '''
                     }
                 }
             }
@@ -88,13 +88,13 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     script {
                         def output = sh(
-                            script: """
+                            script: '''
                             export SONAR_TOKEN=$SONAR_TOKEN
                             export PROJECT_KEY=$PROJECT_KEY
                             export SONAR_URL=$SONAR_URL
 
                             python3 risk-engine/risk-analyzer.py
-                            """,
+                            ''',
                             returnStdout: true
                         ).trim()
 
