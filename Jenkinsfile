@@ -69,14 +69,12 @@ pipeline {
                             COUNT=$((COUNT+1))
                             sleep 3
                         done
-
+                        echo "TASK_ID: $TASK_ID"
+                        echo "SONAR_HOST_URL: $SONAR_HOST_URL"
                         if [ "$STATUS" != "SUCCESS" ]; then
                             echo "Sonar analysis timeout"
                             exit 1
                         fi
-
-                        echo "TASK_ID: $TASK_ID"
-                        echo "SONAR_HOST_URL: $SONAR_HOST_URL"
 
                         echo "Sonar analysis completed."
                         '''
