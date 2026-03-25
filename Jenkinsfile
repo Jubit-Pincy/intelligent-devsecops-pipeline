@@ -41,7 +41,6 @@ pipeline {
 
         stage('Wait for Sonar Processing') {
             steps {
-                withEnv(["SONAR_URL=${params.SONAR_URL}"]) {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     script {
                         sh '''
@@ -81,7 +80,6 @@ pipeline {
                     }
                 }
             }
-        }
         }
 
         stage('Risk Evaluation') {
