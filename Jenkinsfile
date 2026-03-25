@@ -24,9 +24,9 @@ pipeline {
                     def scannerHome = tool 'SonarScanner for MSBuild'
 
                     withSonarQubeEnv('SonarQube') {
-                        sh """
+                        script{
                             env.SONAR_URL = env.SONAR_HOST_URL
-                        """
+                        }
                         sh """
                         dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin \
                             /k:"${PROJECT_KEY}" \
@@ -47,7 +47,7 @@ pipeline {
                         sh '''
                         echo "Waiting for Sonar analysis to finish..."
 
-                        TASK_ID=$(grep -oP 'ce/task\\?id=\\K.*' .sonarqube/out/.sonar/report-task.txt)
+                        TASK_ID=$(awk -F= '/ceTaskId/ {print $2}' .sonarqube/out/.sonar/report-task.txt)
 
                         STATUS="PENDING"
                         COUNT=0
