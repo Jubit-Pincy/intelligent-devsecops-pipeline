@@ -5,7 +5,8 @@ parameters {
 pipeline {
     environment {
     PROJECT_KEY = "${params.PROJECT_KEY}"
-    SONAR_URL = "${params.SONAR_URL}"
+    DEFAULT_SONAR_URL = 'http://localhost:9000'
+    SONAR_URL = "${params.SONAR_URL ?: DEFAULT_SONAR_URL}"
     }
     agent any
     
@@ -52,13 +53,11 @@ pipeline {
                         COUNT=0
                         MAX_ATTEMPTS=20
 
-                        echo "Using SONAR_URL: $SONAR_URL"
+                        echo "Using SONAR_URL: \$SONAR_URL"
 
                         while [ "$STATUS" != "SUCCESS" ] && [ $COUNT -lt $MAX_ATTEMPTS ]; do
 
-                            STATUS=$(curl -s -u $SONAR_TOKEN: \
-                            "$SONAR_URL/api/ce/task?id=$TASK_ID" \
-                            | jq -r '.task.status')
+                            STATUS=\$(curl -s -u \$SONAR_TOKEN: "\$SONAR_URL/api/ce/task?id=\$TASK_ID" | jq -r '.task.status')
 
                             echo "Sonar status: $STATUS"
 
@@ -71,7 +70,7 @@ pipeline {
                             sleep 3
                         done
                         echo "TASK_ID: $TASK_ID"
-                        echo "SONAR_URL: $SONAR_URL"
+                        echo "SONAR_URL: \$SONAR_URL"
                         if [ "$STATUS" != "SUCCESS" ]; then
                             echo "Sonar analysis timeout"
                             exit 1
