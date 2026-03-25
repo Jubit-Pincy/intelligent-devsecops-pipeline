@@ -45,8 +45,6 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     script {
                         sh '''
-                        echo "TASK_ID: $TASK_ID"
-                        echo "SONAR_HOST_URL: $SONAR_HOST_URL"
                         echo "Waiting for Sonar analysis to finish..."
 
                         TASK_ID=$(grep -oP 'ce/task\\?id=\\K.*' .sonarqube/out/.sonar/report-task.txt)
@@ -58,7 +56,7 @@ pipeline {
                         while [ "$STATUS" != "SUCCESS" ] && [ $COUNT -lt $MAX_ATTEMPTS ]; do
 
                             STATUS=$(curl -s -u $SONAR_TOKEN: \
-                            "$SONAR_HOST_URL/api/ce/task?id=$TASK_ID" \
+                            "$SONAR_URL/api/ce/task?id=$TASK_ID" \
                             | jq -r '.task.status')
 
                             echo "Sonar status: $STATUS"
@@ -76,6 +74,9 @@ pipeline {
                             echo "Sonar analysis timeout"
                             exit 1
                         fi
+
+                        echo "TASK_ID: $TASK_ID"
+                        echo "SONAR_HOST_URL: $SONAR_HOST_URL"
 
                         echo "Sonar analysis completed."
                         '''
