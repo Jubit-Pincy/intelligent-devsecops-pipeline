@@ -25,6 +25,9 @@ pipeline {
 
                     withSonarQubeEnv('SonarQube') {
                         sh """
+                            env.SONAR_URL = env.SONAR_HOST_URL
+                        """
+                        sh """
                         dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin \
                             /k:"${PROJECT_KEY}" \
                             /d:sonar.exclusions=reports/**,**/bin/**,**/obj/**
