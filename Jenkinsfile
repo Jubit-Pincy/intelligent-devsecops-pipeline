@@ -56,7 +56,7 @@ pipeline {
                         while [ "$STATUS" != "SUCCESS" ] && [ $COUNT -lt $MAX_ATTEMPTS ]; do
 
                             STATUS=$(curl -s -u $SONAR_TOKEN: \
-                            "$SONAR_URL/api/ce/task?id=$TASK_ID" \
+                            "${env.SONAR_URL}/api/ce/task?id=\$TASK_ID" \
                             | jq -r '.task.status')
 
                             echo "Sonar status: $STATUS"
