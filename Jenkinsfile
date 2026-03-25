@@ -40,6 +40,7 @@ pipeline {
 
         stage('Wait for Sonar Processing') {
             steps {
+                withEnv(["SONAR_URL=${params.SONAR_URL}"]) {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     script {
                         sh '''
@@ -56,7 +57,7 @@ pipeline {
                         while [ "$STATUS" != "SUCCESS" ] && [ $COUNT -lt $MAX_ATTEMPTS ]; do
 
                             STATUS=$(curl -s -u $SONAR_TOKEN: \
-                            "${env.SONAR_URL}/api/ce/task?id=\$TASK_ID" \
+                            "$SONAR_URL/api/ce/task?id=$TASK_ID" \
                             | jq -r '.task.status')
 
                             echo "Sonar status: $STATUS"
@@ -81,6 +82,7 @@ pipeline {
                     }
                 }
             }
+        }
         }
 
         stage('Risk Evaluation') {
