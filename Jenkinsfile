@@ -19,21 +19,63 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('Detect Project Type') {
             steps {
                 script {
-                    def scannerHome = tool 'SonarScanner for MSBuild'
+                    if (fileExists('*.sln')) {
+                        env.PROJECT_TYPE = 'dotnet'
+                    } else if (fileExists('package.json')) {
+                        env.PROJECT_TYPE = 'node'
+                    } else if (fileExists('requirements.txt')) {
+                        env.PROJECT_TYPE = 'python'
+                    } else if (fileExists('pom.xml')) {
+                        env.PROJECT_TYPE = 'java'
+                    } else {
+                        error("Unsupported project type")
+                    }
 
-                    withSonarQubeEnv('SonarQube') {
-                       
-                       sh """
-                        dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin \
-                            /k:"${PROJECT_KEY}" \
-                            /d:sonar.exclusions=reports/**,**/bin/**,**/obj/**
-                        dotnet restore IntelligentDevSecOpsPipeline.sln
-                        dotnet test IntelligentDevSecOpsPipeline.sln --collect:"XPlat Code Coverage"
-                        dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
-                        """
+                        echo "Detected project type: ${env.PROJECT_TYPE}"
+                    }
+                }
+            }
+
+        stage('Build & Sonar Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    script {
+                    
+                        if (env.PROJECT_TYPE == 'dotnet') {
+                            sh '''
+                            dotnet sonarscanner begin /k:"$PROJECT_KEY"
+                            dotnet build
+                            dotnet sonarscanner end
+                            '''
+                        }
+        
+                        else if (env.PROJECT_TYPE == 'node') {
+                            sh '''
+                            npm install
+                            sonar-scanner \
+                              -Dsonar.projectKey=$PROJECT_KEY \
+                              -Dsonar.sources=.
+                            '''
+                        }
+        
+                        else if (env.PROJECT_TYPE == 'python') {
+                            sh '''
+                            pip install -r requirements.txt
+                            sonar-scanner \
+                              -Dsonar.projectKey=$PROJECT_KEY \
+                              -Dsonar.sources=.
+                            '''
+                        }
+        
+                        else if (env.PROJECT_TYPE == 'java') {
+                            sh '''
+                            mvn clean verify sonar:sonar \
+                              -Dsonar.projectKey=$PROJECT_KEY
+                            '''
+                        }
                     }
                 }
             }

@@ -16,9 +16,6 @@ namespace SecureApp.Controllers
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequest request)
         {
-            //Medium Risk
-            string name = null;
-			Console.WriteLine(name.Length);
             
             return Ok(new
             {
