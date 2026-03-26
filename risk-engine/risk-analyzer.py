@@ -5,7 +5,7 @@ import sys
 import json
 
 
-SONAR_URL = os.getenv("SONAR_URL", "http://localhost:9000")
+SONAR_URL = os.getenv("SONAR_URL")
 PROJECT_KEY = os.getenv("PROJECT_KEY")
 SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 # SONAR_URL = "http://127.0.0.1:9000"
