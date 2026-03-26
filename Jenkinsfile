@@ -36,7 +36,7 @@ pipeline {
                     } else {
                         error("Unsupported project type")
                     }
-        
+
                     echo "Detected project type: ${env.PROJECT_TYPE}"
                 }
             }
@@ -48,18 +48,24 @@ pipeline {
                     script {
                     
                         if (env.PROJECT_TYPE == 'dotnet') {
-                            sh '''
-                            dotnet sonarscanner begin /k:"$PROJECT_KEY"
-                            dotnet build
-                            dotnet sonarscanner end
-                            '''
+                        
+                            def scannerHome = tool 'SonarScanner for MSBuild'
+
+                            sh """
+                            dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin \
+                                /k:\$PROJECT_KEY
+
+                            dotnet build IntelligentDevSecOpsPipeline.sln
+
+                            dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
+                            """
                         }
 
                         else if (env.PROJECT_TYPE == 'node') {
                             sh '''
                             npm install
                             sonar-scanner \
-                              -Dsonar.projectKey=$PROJECT_KEY \
+                              -Dsonar.projectKey=\$PROJECT_KEY \
                               -Dsonar.sources=.
                             '''
                         }
@@ -68,7 +74,7 @@ pipeline {
                             sh '''
                             pip install -r requirements.txt
                             sonar-scanner \
-                              -Dsonar.projectKey=$PROJECT_KEY \
+                              -Dsonar.projectKey=\$PROJECT_KEY \
                               -Dsonar.sources=.
                             '''
                         }
@@ -76,7 +82,7 @@ pipeline {
                         else if (env.PROJECT_TYPE == 'java') {
                             sh '''
                             mvn clean verify sonar:sonar \
-                              -Dsonar.projectKey=$PROJECT_KEY
+                              -Dsonar.projectKey=\$PROJECT_KEY
                             '''
                         }
                     }
