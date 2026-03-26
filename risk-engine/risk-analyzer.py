@@ -34,7 +34,17 @@ measures = data["component"]["measures"]
 bugs = int(measures[0]["value"])
 vulns = int(measures[1]["value"])
 hotspots = int(measures[2]["value"])
-risk_score = bugs*3 + vulns*5 + hotspots*2
+bugs_weight = int(os.getenv("WEIGHT_BUGS", 3))
+vulns_weight = int(os.getenv("WEIGHT_VULNS", 5))
+hotspots_weight = int(os.getenv("WEIGHT_HOTSPOTS", 2))
+
+risk_score = (
+    (bugs * bugs_weight) +
+    (vulns * vulns_weight) +
+    (hotspots * hotspots_weight)
+)
+
+print(f"Weights → Bugs: {bugs_weight}, Vulns: {vulns_weight}, Hotspots: {hotspots_weight}")
 
 history_file = "reports/history.json"
 history = []

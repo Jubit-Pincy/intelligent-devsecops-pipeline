@@ -1,6 +1,9 @@
 parameters {
     string(name: 'PROJECT_KEY', defaultValue: 'SecureApp', description: 'SonarQube Project Key')
     string(name: 'SONAR_URL', defaultValue: 'http://localhost:9000', description: 'SonarQube URL')
+    string(name: 'WEIGHT_BUGS', defaultValue: '3', description: 'Weight for bugs')
+    string(name: 'WEIGHT_VULNS', defaultValue: '5', description: 'Weight for vulnerabilities')
+    string(name: 'WEIGHT_HOTSPOTS', defaultValue: '2', description: 'Weight for security hotspots')
 }
 pipeline {
     environment {
@@ -22,7 +25,7 @@ pipeline {
         stage('Detect Project Type') {
             steps {
                 script {
-                    if (fileExists('*.sln')) {
+                    if (sh(script: "ls *.sln", returnStatus: true) == 0) {
                         env.PROJECT_TYPE = 'dotnet'
                     } else if (fileExists('package.json')) {
                         env.PROJECT_TYPE = 'node'
@@ -33,11 +36,11 @@ pipeline {
                     } else {
                         error("Unsupported project type")
                     }
-
-                        echo "Detected project type: ${env.PROJECT_TYPE}"
-                    }
+        
+                    echo "Detected project type: ${env.PROJECT_TYPE}"
                 }
             }
+        }
 
         stage('Build & Sonar Analysis') {
             steps {
@@ -51,7 +54,7 @@ pipeline {
                             dotnet sonarscanner end
                             '''
                         }
-        
+
                         else if (env.PROJECT_TYPE == 'node') {
                             sh '''
                             npm install
@@ -60,7 +63,7 @@ pipeline {
                               -Dsonar.sources=.
                             '''
                         }
-        
+
                         else if (env.PROJECT_TYPE == 'python') {
                             sh '''
                             pip install -r requirements.txt
@@ -69,7 +72,7 @@ pipeline {
                               -Dsonar.sources=.
                             '''
                         }
-        
+
                         else if (env.PROJECT_TYPE == 'java') {
                             sh '''
                             mvn clean verify sonar:sonar \
@@ -133,6 +136,10 @@ pipeline {
                             export SONAR_TOKEN=$SONAR_TOKEN
                             export PROJECT_KEY=$PROJECT_KEY
                             export SONAR_URL=$SONAR_URL
+                            
+                            export WEIGHT_BUGS=$WEIGHT_BUGS
+                            export WEIGHT_VULNS=$WEIGHT_VULNS
+                            export WEIGHT_HOTSPOTS=$WEIGHT_HOTSPOTS
 
                             python3 risk-engine/risk-analyzer.py
                             ''',
@@ -140,6 +147,14 @@ pipeline {
                         ).trim()
 
                         echo output
+
+                        if (output.contains("LOW")) {
+                            env.RISK_LEVEL = "LOW"
+                        } else if (output.contains("MEDIUM")) {
+                            env.RISK_LEVEL = "MEDIUM"
+                        } else if (output.contains("HIGH")) {
+                            env.RISK_LEVEL = "HIGH"
+                        }
 
                         if (output.contains("BUILD BLOCKED")) {
                             error("Pipeline stopped due to HIGH risk")
@@ -153,23 +168,55 @@ pipeline {
             }
         }
         stage('Deploy Application') {
-        steps {
-            // 1. Build locally with a memory limit if needed
-            sh 'docker build --no-cache -t secureapp .'
+            when {
+                expression { env.RISK_LEVEL != 'HIGH' }
+            }
+            steps {
+                script {
+                
+                    echo "Deployment Strategy → Type: ${env.PROJECT_TYPE}, Risk: ${env.RISK_LEVEL}"
 
-            // 2. Atomic Swap (Stop and Start)
-            sh '''
-            docker stop secureapp-container || true
-            docker rm secureapp-container || true
-            docker run -d -p 8081:5000 --memory="512m" --name secureapp-container secureapp
-            '''
+                    if (env.PROJECT_TYPE == 'dotnet') {
+                        sh '''
+                        docker build -t secureapp .
+                        docker stop secureapp-container || true
+                        docker rm secureapp-container || true
+                        docker run -d -p 8081:5000 --name secureapp-container secureapp
+                        '''
+                    }
 
-            // 3. THE CLEANER: This is vital for 128GB storage
-            // This removes unused images and build cache immediately
-            sh 'docker image prune -f'
+                    else if (env.PROJECT_TYPE == 'node') {
+                        sh '''
+                        docker build -t nodeapp .
+                        docker run -d -p 8082:3000 --name nodeapp-container nodeapp
+                        '''
+                    }
+
+                    else if (env.PROJECT_TYPE == 'python') {
+                        sh '''
+                        docker build -t pythonapp .
+                        docker run -d -p 8083:5000 --name pythonapp-container pythonapp
+                        '''
+                    }
+
+                    else if (env.PROJECT_TYPE == 'java') {
+                        sh '''
+                        docker build -t javaapp .
+                        docker run -d -p 8084:8080 --name javaapp-container javaapp
+                        '''
+                    }
+
+                    // 🔶 MEDIUM RISK → mark unstable
+                    if (env.RISK_LEVEL == 'MEDIUM') {
+                        currentBuild.result = 'UNSTABLE'
+                        echo "⚠️ Deployment allowed with warnings (MEDIUM risk)"
+                    }
+
+                    sh 'docker image prune -f'
+                }
+            }
         }
-    }   
-}
+    }
 post {
     always {
         archiveArtifacts artifacts: 'reports/*.html'
