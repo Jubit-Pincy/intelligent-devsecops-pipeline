@@ -34,9 +34,9 @@ measures = data["component"]["measures"]
 bugs = int(measures[0]["value"])
 vulns = int(measures[1]["value"])
 hotspots = int(measures[2]["value"])
-bugs_weight = int(os.getenv("WEIGHT_BUGS", 3))
-vulns_weight = int(os.getenv("WEIGHT_VULNS", 5))
-hotspots_weight = int(os.getenv("WEIGHT_HOTSPOTS", 2))
+bugs_weight = int(os.getenv("WEIGHT_BUGS"or 3))
+vulns_weight = int(os.getenv("WEIGHT_VULNS" or 5))
+hotspots_weight = int(os.getenv("WEIGHT_HOTSPOTS" or 2))
 
 risk_score = (
     (bugs * bugs_weight) +
