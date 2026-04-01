@@ -10,6 +10,10 @@ pipeline {
     PROJECT_KEY = "${params.PROJECT_KEY}"
     DEFAULT_SONAR_URL = 'http://localhost:9000'
     SONAR_URL = "${params.SONAR_URL ?: DEFAULT_SONAR_URL}"
+    WEIGHT_BUGS = "${params.WEIGHT_BUGS}"
+    WEIGHT_VULNS = "${params.WEIGHT_VULNS}"
+    WEIGHT_HOTSPOTS = "${params.WEIGHT_HOTSPOTS}"
+
     }
     agent any
     
