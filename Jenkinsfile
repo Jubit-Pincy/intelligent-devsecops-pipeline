@@ -143,6 +143,8 @@ pipeline {
                     script {
                         def output = sh(
                             script: '''
+                            echo "BUGS=$WEIGHT_BUGS, VULNS=$WEIGHT_VULNS, HOTSPOTS=$WEIGHT_HOTSPOTS"
+
                             export SONAR_TOKEN=$SONAR_TOKEN
                             export PROJECT_KEY=$PROJECT_KEY
                             export SONAR_URL=$SONAR_URL
