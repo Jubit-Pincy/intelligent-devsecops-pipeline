@@ -1,22 +1,25 @@
-# STAGE 1: Build (The "Heavy" part)
+# STAGE 1: Build
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-WORKDIR /src
-COPY SecureApp/ SecureApp/
-COPY IntelligentDevSecOpsPipeline.sln .
-# Restore and Publish in one go to save space
-RUN dotnet publish "SecureApp/SecureApp.csproj" -c Release -o /app/publish
 
-# STAGE 2: Runtime (The "Lightweight" part)
+# Copy everything from the root
+COPY . .
+
+# Dynamically find the first .sln file and publish it
+RUN SLN_FILE=$(ls *.sln | head -n 1) && \
+    dotnet publish "$SLN_FILE" -c Release -o /app/publish
+
+# STAGE 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine
 
 RUN adduser -D appuser
-
 WORKDIR /app
+
+# Copy only the published output
 COPY --from=build /app/publish .
 
 ENV ASPNETCORE_URLS=http://+:5000
-
 USER appuser
 
-ENTRYPOINT ["dotnet", "SecureApp.dll"]
+# Dynamically find the DLL that has a runtimeconfig (the executable)
+ENTRYPOINT ["sh", "-c", "dotnet $(ls *.runtimeconfig.json | sed 's/.runtimeconfig.json/.dll/')"]

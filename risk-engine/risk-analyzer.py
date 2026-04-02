@@ -5,8 +5,22 @@ import sys
 import json
 
 
+def get_actual_project_key():
+    # Path where SonarScanner saves the metadata of the last run
+    report_path = ".sonarqube/out/.sonar/report-task.txt"
+    if os.path.exists(report_path):
+        with open(report_path, "r") as f:
+            for line in f:
+                if line.startswith("projectKey="):
+                    return line.split("=")[1].strip()
+    
+    # Fallback to environment variable if file is missing
+    return os.getenv("PROJECT_KEY", "DefaultProject")
+
+PROJECT_KEY = get_actual_project_key()
+
 SONAR_URL = os.getenv("SONAR_URL")
-PROJECT_KEY = os.getenv("PROJECT_KEY")
+# PROJECT_KEY = os.getenv("PROJECT_KEY")
 SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 SONAR_DASHBOARD = f"{SONAR_URL}/dashboard?id={PROJECT_KEY}"
 PROJECT_REPO = "https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline"

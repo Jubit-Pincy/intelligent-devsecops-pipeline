@@ -7,7 +7,7 @@ parameters {
 }
 pipeline {
     environment {
-    PROJECT_KEY = "${params.PROJECT_KEY}"
+    PROJECT_KEY = "${env.GIT_URL.replaceFirst(/^.*\/([^\/]+)\.git$/, '$1')}"
     DEFAULT_SONAR_URL = 'http://localhost:9000'
     SONAR_URL = "${params.SONAR_URL ?: DEFAULT_SONAR_URL}"
     WEIGHT_BUGS     = "${params.WEIGHT_BUGS ?: '3'}"
@@ -185,45 +185,36 @@ pipeline {
             }
             steps {
                 script {
-                
-                    echo "Deployment Strategy → Type: ${env.PROJECT_TYPE}, Risk: ${env.RISK_LEVEL}"
-
-                    if (env.PROJECT_TYPE == 'dotnet') {
-                        sh '''
-                        docker build -t secureapp .
-                        docker stop secureapp-container || true
-                        docker rm secureapp-container || true
-                        docker run -d -p 8081:5000 --name secureapp-container secureapp
-                        '''
-                    }
-
-                    else if (env.PROJECT_TYPE == 'node') {
-                        sh '''
-                        docker build -t nodeapp .
-                        docker run -d -p 8082:3000 --name nodeapp-container nodeapp
-                        '''
-                    }
-
-                    else if (env.PROJECT_TYPE == 'python') {
-                        sh '''
-                        docker build -t pythonapp .
-                        docker run -d -p 8083:5000 --name pythonapp-container pythonapp
-                        '''
-                    }
-
-                    else if (env.PROJECT_TYPE == 'java') {
-                        sh '''
-                        docker build -t javaapp .
-                        docker run -d -p 8084:8080 --name javaapp-container javaapp
-                        '''
-                    }
-
+                    // 1. Generate dynamic names based on the PROJECT_KEY
+                    // We use toLowerCase() because Docker image names cannot have capitals
+                    def imageName = "${env.PROJECT_KEY.toLowerCase()}"
+                    def containerName = "${imageName}-container"
+                    
+                    // 2. Map ports based on project type (to keep your existing structure)
+                    def portMap = [
+                        'dotnet': '8081:5000',
+                        'node'  : '8082:3000',
+                        'python': '8083:5000',
+                        'java'  : '8084:8080'
+                    ]
+                    def ports = portMap[env.PROJECT_TYPE] ?: '8080:8080'
+        
+                    echo "Deployment Strategy → Project: ${imageName}, Type: ${env.PROJECT_TYPE}, Port: ${ports}"
+        
+                    // 3. Single dynamic shell block for all project types
+                    sh """
+                        docker build -t ${imageName} .
+                        docker stop ${containerName} || true
+                        docker rm ${containerName} || true
+                        docker run -d -p ${ports} --name ${containerName} ${imageName}
+                    """
+        
                     // 🔶 MEDIUM RISK → mark unstable
                     if (env.RISK_LEVEL == 'MEDIUM') {
                         currentBuild.result = 'UNSTABLE'
                         echo "⚠️ Deployment allowed with warnings (MEDIUM risk)"
                     }
-
+        
                     sh 'docker image prune -f'
                 }
             }
