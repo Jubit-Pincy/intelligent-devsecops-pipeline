@@ -1,5 +1,5 @@
 parameters {
-    string(name: 'PROJECT_KEY', defaultValue: 'ProjectKey', description: 'SonarQube Project Key')
+    string(name: 'PROJECT_KEY', defaultValue: 'SecureApp', description: 'SonarQube Project Key')
     string(name: 'SONAR_URL', defaultValue: 'http://localhost:9000', description: 'SonarQube URL')
     string(name: 'WEIGHT_BUGS', defaultValue: '3', description: 'Weight for bugs')
     string(name: 'WEIGHT_VULNS', defaultValue: '5', description: 'Weight for vulnerabilities')
