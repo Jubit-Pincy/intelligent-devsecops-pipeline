@@ -34,9 +34,20 @@ measures = data["component"]["measures"]
 bugs = int(measures[0]["value"])
 vulns = int(measures[1]["value"])
 hotspots = int(measures[2]["value"])
-bugs_weight = int(os.getenv("WEIGHT_BUGS") or 3)
-vulns_weight = int(os.getenv("WEIGHT_VULNS") or 5)
-hotspots_weight = int(os.getenv("WEIGHT_HOTSPOTS") or 2)
+def get_safe_int(env_var, default_value):
+    val = os.getenv(env_var)
+    # Check if the value is None, an empty string, or the literal string "null"
+    if val is None or val.strip().lower() == "null" or val.strip() == "":
+        return default_value
+    try:
+        return int(val)
+    except ValueError:
+        return default_value
+
+# Use the helper for weights
+bugs_weight = get_safe_int("WEIGHT_BUGS", 3)
+vulns_weight = get_safe_int("WEIGHT_VULNS", 5)
+hotspots_weight = get_safe_int("WEIGHT_HOTSPOTS", 2)
 
 risk_score = (
     (bugs * bugs_weight) +

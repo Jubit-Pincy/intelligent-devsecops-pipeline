@@ -1,5 +1,5 @@
 parameters {
-    string(name: 'PROJECT_KEY', defaultValue: 'SecureApp', description: 'SonarQube Project Key')
+    string(name: 'PROJECT_KEY', defaultValue: 'ProjectKey', description: 'SonarQube Project Key')
     string(name: 'SONAR_URL', defaultValue: 'http://localhost:9000', description: 'SonarQube URL')
     string(name: 'WEIGHT_BUGS', defaultValue: '3', description: 'Weight for bugs')
     string(name: 'WEIGHT_VULNS', defaultValue: '5', description: 'Weight for vulnerabilities')
@@ -9,10 +9,10 @@ pipeline {
     environment {
     PROJECT_KEY = "${env.PROJECT_KEY}"
     DEFAULT_SONAR_URL = 'http://localhost:9000'
-    SONAR_URL = "${env.SONAR_URL ?: DEFAULT_SONAR_URL}"
-    WEIGHT_BUGS = "${env.WEIGHT_BUGS}"
-    WEIGHT_VULNS = "${env.WEIGHT_VULNS}"
-    WEIGHT_HOTSPOTS = "${env.WEIGHT_HOTSPOTS}"
+    SONAR_URL = "${params.SONAR_URL ?: DEFAULT_SONAR_URL}"
+    WEIGHT_BUGS     = "${params.WEIGHT_BUGS ?: '3'}"
+    WEIGHT_VULNS    = "${params.WEIGHT_VULNS ?: '5'}"
+    WEIGHT_HOTSPOTS = "${params.WEIGHT_HOTSPOTS ?: '2'}"
 
     }
     agent any
