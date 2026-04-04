@@ -68,7 +68,8 @@ pipeline {
                                 # 4. END SONAR
                                 dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
                             """
-                    } 
+                        }
+                    }
                     // 2. Java Strategy (Requires Maven/Gradle Scanner)
                     else if (env.PROJECT_TYPE == 'java') {
                         withSonarQubeEnv('SonarQube') {
