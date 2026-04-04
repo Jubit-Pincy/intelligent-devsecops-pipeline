@@ -48,46 +48,36 @@ pipeline {
 
         stage('Build & Sonar Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    script {
-                    
-                        if (env.PROJECT_TYPE == 'dotnet') {
-                        
-                            def scannerHome = tool 'SonarScanner for MSBuild'
-
+                script {
+                    // 1. .NET Strategy (Requires MSBuild Scanner)
+                    if (env.PROJECT_TYPE == 'dotnet') {
+                        def scannerHome = tool 'SonarScanner for MSBuild'
+                        withSonarQubeEnv('SonarQube') {
                             sh """
-                            dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin \
-                                /k:\$PROJECT_KEY
-
-                            dotnet build IntelligentDevSecOpsPipeline.sln
-
-                            dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
+                                dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY}
+                                dotnet build *.sln
+                                dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
                             """
                         }
-
-                        else if (env.PROJECT_TYPE == 'node') {
-                            sh '''
-                            npm install
-                            sonar-scanner \
-                              -Dsonar.projectKey=\$PROJECT_KEY \
-                              -Dsonar.sources=.
-                            '''
+                    } 
+                    // 2. Java Strategy (Requires Maven/Gradle Scanner)
+                    else if (env.PROJECT_TYPE == 'java') {
+                        withSonarQubeEnv('SonarQube') {
+                            if (fileExists('pom.xml')) {
+                                sh "mvn clean verify sonar:sonar -Dsonar.projectKey=${PROJECT_KEY}"
+                            } else if (fileExists('build.gradle')) {
+                                sh "./gradlew sonar -Dsonar.projectKey=${PROJECT_KEY}"
+                            }
                         }
-
-                        else if (env.PROJECT_TYPE == 'python') {
-                            sh '''
-                            pip install -r requirements.txt
-                            sonar-scanner \
-                              -Dsonar.projectKey=\$PROJECT_KEY \
-                              -Dsonar.sources=.
-                            '''
-                        }
-
-                        else if (env.PROJECT_TYPE == 'java') {
-                            sh '''
-                            mvn clean verify sonar:sonar \
-                              -Dsonar.projectKey=\$PROJECT_KEY
-                            '''
+                    }
+                    // 3. Universal Strategy (TS, JS, Python, C++, Go, PHP, etc.)
+                    else {
+                        withSonarQubeEnv('SonarQube') {
+                            // C++ special provision: check for build-wrapper
+                            if (fileExists('CMakeLists.txt') || fileExists('Makefile')) {
+                                echo "C/C++ Detected: Use build-wrapper if available"
+                            }
+                            sh "sonar-scanner -Dsonar.projectKey=${PROJECT_KEY} -Dsonar.sources=."
                         }
                     }
                 }

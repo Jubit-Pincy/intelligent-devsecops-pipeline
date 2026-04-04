@@ -33,35 +33,45 @@ if not PROJECT_KEY or not SONAR_TOKEN:
     sys.exit(1)
 
 url = f"{SONAR_URL}/api/measures/component"
+# Use a flexible comma-separated list of metrics from the environment
+requested_metrics = os.getenv("METRIC_KEYS", "bugs,vulnerabilities,security_hotspots")
+
 params = {
     "component": PROJECT_KEY,
-    "metricKeys": "bugs,vulnerabilities,security_hotspots",
+    "metricKeys": requested_metrics,
     "branch": "main"
 }
 
 response = requests.get(url, params=params, auth=(SONAR_TOKEN, ""))
 data = response.json()
 
-measures = data["component"]["measures"]
+measures_data = data.get("component", {}).get("measures", [])
 
-bugs = int(measures[0]["value"])
-vulns = int(measures[1]["value"])
-hotspots = int(measures[2]["value"])
+# Convert the list of measures into a dictionary for safe lookup
+# Example: {'bugs': 5, 'vulnerabilities': 2, 'security_hotspots': 0}
+metrics_dict = {m["metric"]: int(m["value"]) for m in measures_data}
+
+# Helper to get numeric values from the environment safely
 def get_safe_int(env_var, default_value):
     val = os.getenv(env_var)
-    # Check if the value is None, an empty string, or the literal string "null"
-    if val is None or val.strip().lower() == "null" or val.strip() == "":
+    if val is None or str(val).strip().lower() == "null" or str(val).strip() == "":
         return default_value
     try:
         return int(val)
     except ValueError:
         return default_value
 
-# Use the helper for weights
+# Get metric values from the dictionary (default to 0 if missing)
+bugs = metrics_dict.get("bugs", 0)
+vulns = metrics_dict.get("vulnerabilities", 0)
+hotspots = metrics_dict.get("security_hotspots", 0)
+
+# Get weights from environment variables
 bugs_weight = get_safe_int("WEIGHT_BUGS", 3)
 vulns_weight = get_safe_int("WEIGHT_VULNS", 5)
 hotspots_weight = get_safe_int("WEIGHT_HOTSPOTS", 2)
 
+# Calculate risk score
 risk_score = (
     (bugs * bugs_weight) +
     (vulns * vulns_weight) +
