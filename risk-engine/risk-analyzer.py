@@ -20,7 +20,6 @@ def get_actual_project_key():
 PROJECT_KEY = get_actual_project_key()
 
 SONAR_URL = os.getenv("SONAR_URL")
-# PROJECT_KEY = os.getenv("PROJECT_KEY")
 SONAR_TOKEN = os.getenv("SONAR_TOKEN")
 SONAR_DASHBOARD = f"{SONAR_URL}/dashboard?id={PROJECT_KEY}"
 PROJECT_REPO = "https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline"
