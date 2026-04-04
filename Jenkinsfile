@@ -51,14 +51,23 @@ pipeline {
                 script {
                     // 1. .NET Strategy (Requires MSBuild Scanner)
                     if (env.PROJECT_TYPE == 'dotnet') {
-                        def scannerHome = tool 'SonarScanner for MSBuild'
+                    def scannerHome = tool 'SonarScanner for MSBuild'
                         withSonarQubeEnv('SonarQube') {
                             sh """
-                                dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY}
-                                dotnet build *.sln
+                                # 1. FIX THE SOLUTION FILE (Plug and Play)
+                                # This removes broken references and adds the new ones
+                                dotnet new sln --force -n SolutionFile
+                                dotnet sln SolutionFile.sln add App/App.csproj
+            
+                                # 2. START SONAR
+                                dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
+            
+                                # 3. BUILD (Now it will find App.csproj perfectly)
+                                dotnet build SolutionFile.sln -c Release
+            
+                                # 4. END SONAR
                                 dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
                             """
-                        }
                     } 
                     // 2. Java Strategy (Requires Maven/Gradle Scanner)
                     else if (env.PROJECT_TYPE == 'java') {
