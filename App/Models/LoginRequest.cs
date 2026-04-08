@@ -1,4 +1,4 @@
-namespace SecureApp.Models
+namespace App.Models
 {
     public class LoginRequest
     {
