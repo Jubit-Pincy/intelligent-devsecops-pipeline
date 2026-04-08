@@ -59,7 +59,8 @@ pipeline {
 
                             # 2. Start Sonar (looking for the exact absolute path)
                             dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
-                                /d:sonar.cs.opencover.reportsPaths="\${WORKSPACE_DIR}/coverage.opencover.xml"
+                                /d:sonar.cs.opencover.reportsPaths="\${WORKSPACE_DIR}/coverage.opencover.xml" \
+                                /d:sonar.exclusions="risk-engine/**,App/Program.cs,reports/**,**/bin/**,**/obj/**"
 
                             # 3. Build the solution
                             dotnet build SolutionFile.sln -c Release

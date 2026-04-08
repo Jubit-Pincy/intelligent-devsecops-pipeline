@@ -8,7 +8,7 @@ bin/
 obj/
 reports/
 *.user
-risk-engine
+risk-engine/
 *.md
 *.log
 Dockerfile
