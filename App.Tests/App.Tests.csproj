@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SecureApp\SecureApp.csproj" />
+    <ProjectReference Include="..\App\App.csproj" />
   </ItemGroup>
 
 </Project>
