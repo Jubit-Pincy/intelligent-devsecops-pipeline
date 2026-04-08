@@ -54,18 +54,18 @@ pipeline {
                     def scannerHome = tool 'SonarScanner for MSBuild'
                         withSonarQubeEnv('SonarQube') {
                             sh """
-                                # 1. FIX THE SOLUTION FILE (Plug and Play)
-                                # This removes broken references and adds the new ones
-                                dotnet new sln --force -n SolutionFile
-                                dotnet sln SolutionFile.sln add App/App.csproj
+                                # 1. Start Sonar with a pointer to the coverage report
+                                dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
+                                    /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
             
-                                # 2. START SONAR
-                                dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
-            
-                                # 3. BUILD (Now it will find App.csproj perfectly)
+                                # 2. Build the app
                                 dotnet build SolutionFile.sln -c Release
             
-                                # 4. END SONAR
+                                # 3. DYNAMIC TEST & COVERAGE
+                                # This finds any project ending in .Tests and runs it with coverage enabled
+                                dotnet test --no-build -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput=../coverage.xml
+            
+                                # 4. End Sonar (This uploads the coverage.xml to the server)
                                 dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
                             """
                         }
