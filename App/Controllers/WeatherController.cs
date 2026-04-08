@@ -7,7 +7,7 @@ namespace App.Controllers
     [Route("weather")]
     public class WeatherController : ControllerBase
     {
-        private readonly WeatherService _weatherService;
+        private readonly IWeatherService _weatherService;
 
         public WeatherController(WeatherService weatherService)
         {

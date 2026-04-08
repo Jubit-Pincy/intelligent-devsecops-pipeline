@@ -12,7 +12,7 @@ namespace App.Tests
         public async Task GetWeather_ReturnsOk_WithMockedData()
         {
             // 1. Arrange: Mock the service so we don't hit a real API
-            var mockService = new Mock<WeatherService>();
+            var mockService = new Mock<IWeatherService>();
             mockService.Setup(s => s.GetWeatherAsync(It.IsAny<string>()))
                        .ReturnsAsync("Cloudy with a chance of successful builds");
 
