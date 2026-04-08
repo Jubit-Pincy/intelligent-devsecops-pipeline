@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using SecureApp.Services;
+using App.Services;
 
-namespace SecureApp.Controllers
+namespace App.Controllers
 {
     [ApiController]
     [Route("weather")]

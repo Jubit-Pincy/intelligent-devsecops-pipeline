@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using SecureApp.Models;
+using App.Models;
 
 namespace SecureApp.Controllers
 {

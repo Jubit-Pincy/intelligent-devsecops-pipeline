@@ -1,4 +1,4 @@
-namespace SecureApp.Services
+namespace App.Services
 {
     public class WeatherService
     {
