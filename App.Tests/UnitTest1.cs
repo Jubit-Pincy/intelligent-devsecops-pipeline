@@ -29,7 +29,7 @@ namespace App.Tests
         {
             // Arrange
             var controller = new WeatherForecastController();
-            var request = new SecureApp.Models.LoginRequest { Username = "TestUser", Password = "TestPassword" };
+            var request = new App.Models.LoginRequest { Username = "TestUser", Password = "TestPassword" };
 
             // Act
             var result = controller.Login(request);
