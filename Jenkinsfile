@@ -54,21 +54,33 @@ pipeline {
                     def scannerHome = tool 'SonarScanner for MSBuild'
                         withSonarQubeEnv('SonarQube') {
                         sh """
-                            # 1. Start Sonar
+                            # 1. Capture the absolute workspace path
+                            WORKSPACE_DIR=\$(pwd)
+
+                            # 2. Start Sonar (looking for the exact absolute path)
                             dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
-                                /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
-                        
-                            # 2. Build
+                                /d:sonar.cs.opencover.reportsPaths="\${WORKSPACE_DIR}/coverage.opencover.xml"
+
+                            # 3. Build the solution
                             dotnet build SolutionFile.sln -c Release
-                        
-                            # 3. Run Tests and Force the Output to the Root
-                            # We use -p:CoverletOutput=../ to move it from the test folder to the workspace root
+
+                            # 4. Run tests and force output to the absolute path
                             dotnet test SolutionFile.sln --no-build -c Release \
                                 /p:CollectCoverage=true \
                                 /p:CoverletOutputFormat=opencover \
-                                /p:CoverletOutput="../coverage.opencover.xml"
-                        
-                            # 4. End Sonar
+                                /p:CoverletOutput="\${WORKSPACE_DIR}/coverage.opencover.xml"
+
+                            # 5. ENTERPRISE DEBUGGING: Verify the file exists
+                            echo "===== COVERAGE DIAGNOSTICS ====="
+                            if [ -f "\${WORKSPACE_DIR}/coverage.opencover.xml" ]; then
+                                echo "SUCCESS: Coverage file generated at \${WORKSPACE_DIR}/coverage.opencover.xml"
+                                head -n 5 "\${WORKSPACE_DIR}/coverage.opencover.xml"
+                            else
+                                echo "CRITICAL ERROR: Coverage file is MISSING. Check coverlet.msbuild package."
+                            fi
+                            echo "================================"
+
+                            # 6. End Sonar
                             dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
                         """
                         }
