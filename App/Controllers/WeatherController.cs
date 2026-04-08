@@ -9,7 +9,7 @@ namespace App.Controllers
     {
         private readonly IWeatherService _weatherService;
 
-        public WeatherController(WeatherService weatherService)
+        public WeatherController(IWeatherService weatherService)
         {
             _weatherService = weatherService;
         }
