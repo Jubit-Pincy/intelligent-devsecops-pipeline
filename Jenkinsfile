@@ -56,15 +56,17 @@ pipeline {
                             sh """
                                 # 1. Start Sonar with a pointer to the coverage report
                                 dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
-                                    /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
-            
+                                    /d:sonar.cs.opencover.reportsPaths=coverage.opencover.xml
+
                                 # 2. Build the app
                                 dotnet build SolutionFile.sln -c Release
-            
-                                # 3. DYNAMIC TEST & COVERAGE
-                                # This finds any project ending in .Tests and runs it with coverage enabled
-                                dotnet test --no-build -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput=../coverage.xml
-            
+
+                                # 3. Run Tests with OpenCover format
+                                dotnet test --no-build -c Release \
+                                    /p:CollectCoverage=true \
+                                    /p:CoverletOutputFormat=opencover \
+                                    /p:CoverletOutput=./coverage.opencover.xml
+
                                 # 4. End Sonar (This uploads the coverage.xml to the server)
                                 dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
                             """
