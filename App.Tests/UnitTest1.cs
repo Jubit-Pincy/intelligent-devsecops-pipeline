@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace SecureApp.Tests
+namespace App.Tests
 {
     public class BasicTest
     {

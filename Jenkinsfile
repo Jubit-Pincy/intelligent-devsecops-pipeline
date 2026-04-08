@@ -53,23 +53,24 @@ pipeline {
                     if (env.PROJECT_TYPE == 'dotnet') {
                     def scannerHome = tool 'SonarScanner for MSBuild'
                         withSonarQubeEnv('SonarQube') {
-                            sh """
-                                # 1. Start Sonar with a pointer to the coverage report
-                                dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
-                                    /d:sonar.cs.opencover.reportsPaths=coverage.opencover.xml
-
-                                # 2. Build the app
-                                dotnet build SolutionFile.sln -c Release
-
-                                # 3. Run Tests with OpenCover format
-                                dotnet test --no-build -c Release \
-                                    /p:CollectCoverage=true \
-                                    /p:CoverletOutputFormat=opencover \
-                                    /p:CoverletOutput=./coverage.opencover.xml
-
-                                # 4. End Sonar (This uploads the coverage.xml to the server)
-                                dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
-                            """
+                        sh """
+                            # 1. Start Sonar
+                            dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
+                                /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
+                        
+                            # 2. Build
+                            dotnet build SolutionFile.sln -c Release
+                        
+                            # 3. Run Tests and Force the Output to the Root
+                            # We use -p:CoverletOutput=../ to move it from the test folder to the workspace root
+                            dotnet test SolutionFile.sln --no-build -c Release \
+                                /p:CollectCoverage=true \
+                                /p:CoverletOutputFormat=opencover \
+                                /p:CoverletOutput="../coverage.opencover.xml"
+                        
+                            # 4. End Sonar
+                            dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
+                        """
                         }
                     }
                     // 2. Java Strategy (Requires Maven/Gradle Scanner)
