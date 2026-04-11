@@ -25,5 +25,19 @@ namespace App.Tests
             var okResult = Assert.IsType<OkObjectResult>(result);
             Assert.Equal("Cloudy with a chance of successful builds", okResult.Value);
         }
+        [Fact]
+        public void Health_ReturnsOkResult()
+        {
+            // Arrange
+            var mockService = new Moq.Mock<IWeatherService>();
+            var controller = new WeatherController(mockService.Object);
+        
+            // Act
+            var result = controller.Health();
+        
+            // Assert
+            var okResult = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(result);
+            Assert.NotNull(okResult.Value);
+        }
     }
 }
