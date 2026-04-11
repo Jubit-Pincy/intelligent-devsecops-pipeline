@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Moq;
 using Moq.Protected;
 using Xunit;
-using SecureApp.Services;
+using App.Services;
 
 namespace App.Tests
 {
