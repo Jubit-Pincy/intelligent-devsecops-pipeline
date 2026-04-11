@@ -4,6 +4,11 @@ parameters {
     string(name: 'WEIGHT_BUGS', defaultValue: '3', description: 'Weight for bugs')
     string(name: 'WEIGHT_VULNS', defaultValue: '5', description: 'Weight for vulnerabilities')
     string(name: 'WEIGHT_HOTSPOTS', defaultValue: '2', description: 'Weight for security hotspots')
+    choice(
+        name: 'MANUAL_PROJECT_TYPE',
+        choices: ['auto', 'dotnet', 'java', 'python', 'node', 'cpp'],
+        description: 'Set to "auto" for detection, or force a specific type.'
+    )
 }
 pipeline {
     environment {
@@ -29,19 +34,28 @@ pipeline {
         stage('Detect Project Type') {
             steps {
                 script {
-                    if (sh(script: "ls *.sln", returnStatus: true) == 0) {
-                        env.PROJECT_TYPE = 'dotnet'
-                    } else if (fileExists('package.json')) {
-                        env.PROJECT_TYPE = 'node'
-                    } else if (fileExists('requirements.txt')) {
-                        env.PROJECT_TYPE = 'python'
-                    } else if (fileExists('pom.xml')) {
-                        env.PROJECT_TYPE = 'java'
-                    } else {
-                        error("Unsupported project type")
+                    // 1. Check if user provided a manual override
+                    if (params.MANUAL_PROJECT_TYPE != 'auto') {
+                        env.PROJECT_TYPE = params.MANUAL_PROJECT_TYPE
+                        echo "Using Manual Override: ${env.PROJECT_TYPE}"
+                    } 
+                    // 2. Otherwise, perform the Automated Discovery
+                    else {
+                        if (sh(script: "ls *.sln", returnStatus: true) == 0) {
+                            env.PROJECT_TYPE = 'dotnet'
+                        } else if (fileExists('pom.xml')) {
+                            env.PROJECT_TYPE = 'java'
+                        } else if (fileExists('requirements.txt')) {
+                            env.PROJECT_TYPE = 'python'
+                        } else if (fileExists('package.json')) {
+                            env.PROJECT_TYPE = 'node'
+                        } else if (fileExists('CMakeLists.txt') || fileExists('Makefile')) {
+                            env.PROJECT_TYPE = 'cpp'
+                        } else {
+                            error("Unsupported project type - No Solution, POM, or Requirements found.")
+                        }
+                        echo "Automated Detection: ${env.PROJECT_TYPE}"
                     }
-
-                    echo "Detected project type: ${env.PROJECT_TYPE}"
                 }
             }
         }
