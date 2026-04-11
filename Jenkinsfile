@@ -49,60 +49,64 @@ pipeline {
         stage('Build & Sonar Analysis') {
             steps {
                 script {
-                    // 1. .NET Strategy (Requires MSBuild Scanner)
-                    if (env.PROJECT_TYPE == 'dotnet') {
-                    def scannerHome = tool 'SonarScanner for MSBuild'
-                        withSonarQubeEnv('SonarQube') {
-                        sh """
-                            # 1. Capture the absolute workspace path
-                            WORKSPACE_DIR=\$(pwd)
+                    // Define tools once
+                    def msbuildScanner = tool 'SonarScanner for MSBuild'
+                    def bwHome = tool 'Sonar Build Wrapper'
 
-                            # 2. Start Sonar (looking for the exact absolute path)
-                            dotnet ${scannerHome}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
-                                /d:sonar.cs.opencover.reportsPaths="\${WORKSPACE_DIR}/coverage.opencover.xml" \
-                                /d:sonar.exclusions="risk-engine/**,App/Program.cs,reports/**,**/bin/**,**/obj/**"
-
-                            # 3. Build the solution
-                            dotnet build SolutionFile.sln -c Release
-
-                            # 4. Run tests and force output to the absolute path
-                            dotnet test SolutionFile.sln --no-build -c Release \
-                                /p:CollectCoverage=true \
-                                /p:CoverletOutputFormat=opencover \
-                                /p:CoverletOutput="\${WORKSPACE_DIR}/coverage.opencover.xml"
-
-                            # 5. ENTERPRISE DEBUGGING: Verify the file exists
-                            echo "===== COVERAGE DIAGNOSTICS ====="
-                            if [ -f "\${WORKSPACE_DIR}/coverage.opencover.xml" ]; then
-                                echo "SUCCESS: Coverage file generated at \${WORKSPACE_DIR}/coverage.opencover.xml"
-                                head -n 5 "\${WORKSPACE_DIR}/coverage.opencover.xml"
-                            else
-                                echo "CRITICAL ERROR: Coverage file is MISSING. Check coverlet.msbuild package."
-                            fi
-                            echo "================================"
-
-                            # 6. End Sonar
-                            dotnet ${scannerHome}/SonarScanner.MSBuild.dll end
-                        """
+                    withSonarQubeEnv('SonarQube') {
+                        // --- STRATEGY 1: JAVA (Maven/Gradle) ---
+                        if (env.PROJECT_TYPE == 'java' || fileExists('pom.xml')) {
+                            echo "Executing Java/Maven Strategy"
+                            // Maven automatically handles scanning and coverage if sonar-maven-plugin is configured
+                            sh "mvn clean verify sonar:sonar -Dsonar.projectKey=${PROJECT_KEY}"
                         }
-                    }
-                    // 2. Java Strategy (Requires Maven/Gradle Scanner)
-                    else if (env.PROJECT_TYPE == 'java') {
-                        withSonarQubeEnv('SonarQube') {
-                            if (fileExists('pom.xml')) {
-                                sh "mvn clean verify sonar:sonar -Dsonar.projectKey=${PROJECT_KEY}"
-                            } else if (fileExists('build.gradle')) {
-                                sh "./gradlew sonar -Dsonar.projectKey=${PROJECT_KEY}"
-                            }
+
+                        // --- STRATEGY 2: C/C++ (Build Wrapper) ---
+                        else if (env.PROJECT_TYPE == 'cpp' || fileExists('CMakeLists.txt')) {
+                            echo "Executing C++ Build Wrapper Strategy"
+                            sh """
+                                # Build Wrapper captures the build to help Sonar map macros and headers
+                                ${bwHome}/build-wrapper-linux-x86-64 --out-dir bw-output make clean all
+
+                                sonar-scanner \
+                                    -Dsonar.projectKey=${PROJECT_KEY} \
+                                    -Dsonar.sources=. \
+                                    -Dsonar.cfamily.build-wrapper-output=bw-output
+                            """
                         }
-                    }
-                    // 3. Universal Strategy (TS, JS, Python, C++, Go, PHP, etc.)
-                    else {
-                        withSonarQubeEnv('SonarQube') {
-                            // C++ special provision: check for build-wrapper
-                            if (fileExists('CMakeLists.txt') || fileExists('Makefile')) {
-                                echo "C/C++ Detected: Use build-wrapper if available"
-                            }
+
+                        // --- STRATEGY 3: .NET ---
+                        else if (env.PROJECT_TYPE == 'dotnet' || fileExists('SolutionFile.sln')) {
+                            echo "Executing .NET Strategy"
+                            sh """
+                                WORKSPACE_DIR=\$(pwd)
+
+                                dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
+                                    /d:sonar.cs.opencover.reportsPaths="\${WORKSPACE_DIR}/coverage.opencover.xml" \
+                                    /d:sonar.exclusions="risk-engine/**,App/Program.cs,reports/**,**/bin/**,**/obj/**"
+
+                                dotnet build SolutionFile.sln -c Release
+
+                                dotnet test SolutionFile.sln --no-build -c Release \
+                                    /p:CollectCoverage=true \
+                                    /p:CoverletOutputFormat=opencover \
+                                    /p:CoverletOutput="\${WORKSPACE_DIR}/coverage.opencover.xml"
+
+                                echo "===== COVERAGE DIAGNOSTICS ====="
+                                if [ -f "\${WORKSPACE_DIR}/coverage.opencover.xml" ]; then
+                                    echo "SUCCESS: Coverage file generated at \${WORKSPACE_DIR}/coverage.opencover.xml"
+                                else
+                                    echo "CRITICAL ERROR: Coverage file is MISSING."
+                                fi
+                                echo "================================"
+
+                                dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll end
+                            """
+                        }
+
+                        // --- STRATEGY 4: UNIVERSAL FALLBACK (Python/JS) ---
+                        else {
+                            echo "Executing Universal Scanner Strategy"
                             sh "sonar-scanner -Dsonar.projectKey=${PROJECT_KEY} -Dsonar.sources=."
                         }
                     }
