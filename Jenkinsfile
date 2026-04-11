@@ -37,8 +37,8 @@ pipeline {
 
                     def manualType = params.MANUAL_PROJECT_TYPE ?: 'auto'
                     // 1. Check if user provided a manual override
-                    if (params.MANUAL_PROJECT_TYPE != 'auto') {
-                        env.PROJECT_TYPE = params.MANUAL_PROJECT_TYPE
+                    if (manualType != 'auto') {
+                        env.PROJECT_TYPE = manualType
                         echo "Using Manual Override: ${env.PROJECT_TYPE}"
                     } 
                     // 2. Otherwise, perform the Automated Discovery
