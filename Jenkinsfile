@@ -93,7 +93,7 @@ pipeline {
                                 WORKSPACE_DIR=\$(pwd)
 
                                 dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
-                                    /o:"jubit-pincy" \  // add your organization key here
+                                    /o:"jubit-pincy" \
                                     /d:sonar.host.url="https://sonarcloud.io" \
                                     /d:sonar.cs.opencover.reportsPaths="\${WORKSPACE_DIR}/coverage.opencover.xml" \
                                     /d:sonar.exclusions="risk-engine/**,App/Program.cs,reports/**,**/bin/**,**/obj/**"
