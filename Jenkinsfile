@@ -1,4 +1,6 @@
-parameters {
+pipeline {
+
+    parameters {
     string(name: 'PROJECT_KEY', defaultValue: 'App', description: 'SonarQube Project Key')
     string(name: 'SONAR_URL', defaultValue: 'https://sonarcloud.io', description: 'SonarQube URL')
     string(name: 'WEIGHT_BUGS', defaultValue: '3', description: 'Weight for bugs')
@@ -8,9 +10,9 @@ parameters {
         name: 'MANUAL_PROJECT_TYPE',
         choices: ['auto', 'dotnet', 'java', 'python', 'node', 'cpp'],
         description: 'Set to "auto" for detection, or force a specific type.'
-    )
-}
-pipeline {
+        )
+    }
+
     environment {
     PROJECT_KEY = "${env.GIT_URL.replaceFirst(/^.*\/([^\/]+)\.git$/, '$1')}"
     DEFAULT_SONAR_URL = 'https://sonarcloud.io'
