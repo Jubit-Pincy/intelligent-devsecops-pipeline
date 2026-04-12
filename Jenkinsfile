@@ -88,13 +88,14 @@ pipeline {
                         // --- STRATEGY 3: .NET ---
                         else if (env.PROJECT_TYPE == 'dotnet' || fileExists('SolutionFile.sln')) {
                             echo "Executing .NET Strategy"
-                            def msbuildScanner = tool 'SonarScanner for MSBuild'
+                            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                             sh """
                                 WORKSPACE_DIR=\$(pwd)
 
                                 dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
                                     /o:"jubit-pincy" \
                                     /d:sonar.host.url="https://sonarcloud.io" \
+                                    /d:sonar.token="${SONAR_TOKEN}" \
                                     /d:sonar.cs.opencover.reportsPaths="\${WORKSPACE_DIR}/coverage.opencover.xml" \
                                     /d:sonar.exclusions="risk-engine/**,App/Program.cs,reports/**,**/bin/**,**/obj/**"
 
@@ -116,7 +117,7 @@ pipeline {
                                 dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll end
                             """
                         }
-
+                        }
                         // --- STRATEGY 4: UNIVERSAL FALLBACK (Python/JS) ---
                         else {
                             echo "Executing Universal Scanner Strategy"
