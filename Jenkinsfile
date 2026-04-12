@@ -115,7 +115,8 @@ pipeline {
                                 fi
                                 echo "================================"
 
-                                dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll end
+                                dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll end \
+                                /d:sonar.token="${SONAR_TOKEN}"
                             """
                             }
                         }
