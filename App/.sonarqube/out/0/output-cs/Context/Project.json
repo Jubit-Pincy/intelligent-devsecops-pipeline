@@ -1,0 +1,7 @@
+{
+  "language": "C#",
+  "targetFramework": "net8.0",
+  "assemblyName": "App",
+  "projectType": "Product",
+  "projectPath": "/home/jubit/DevSecOpsProject/App/App.csproj"
+}

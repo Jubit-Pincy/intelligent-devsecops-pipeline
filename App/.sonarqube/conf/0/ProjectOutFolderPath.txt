@@ -1,0 +1,1 @@
+/home/jubit/DevSecOpsProject/App/.sonarqube/out/0

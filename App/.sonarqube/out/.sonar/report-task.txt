@@ -1,0 +1,7 @@
+organization=jubit-pincy
+projectKey=intelligent-devsecops-pipeline
+serverUrl=https://sonarcloud.io
+serverVersion=8.0.0.85183
+dashboardUrl=https://sonarcloud.io/dashboard?id=intelligent-devsecops-pipeline
+ceTaskId=AZ2AMAKR635T0f7MaMPL
+ceTaskUrl=https://sonarcloud.io/api/ce/task?id=AZ2AMAKR635T0f7MaMPL

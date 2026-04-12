@@ -1,0 +1,11 @@
+c
+X/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.MvcApplicationPartsAssemblyInfo.csutf-8P
+E/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.AssemblyInfo.csutf-8k
+`/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/.NETCoreApp,Version=v8.0.AssemblyAttributes.csutf-8R
+G/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.GlobalUsings.g.csutf-8D
+;/home/jubit/DevSecOpsProject/App/Services/WeatherService.csutf-8E
+</home/jubit/DevSecOpsProject/App/Services/IWeatherService.csutf-84
++/home/jubit/DevSecOpsProject/App/Program.csutf-8@
+7/home/jubit/DevSecOpsProject/App/Models/LoginRequest.csutf-8R
+I/home/jubit/DevSecOpsProject/App/Controllers/WeatherForecastController.csutf-8J
+A/home/jubit/DevSecOpsProject/App/Controllers/WeatherController.csutf-8

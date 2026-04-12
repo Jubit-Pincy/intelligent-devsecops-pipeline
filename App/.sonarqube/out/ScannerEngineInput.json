@@ -1,0 +1,100 @@
+{
+  "scannerProperties": [
+    {
+      "key": "sonar.scanner.app",
+      "value": "ScannerMSBuild"
+    },
+    {
+      "key": "sonar.scanner.appVersion",
+      "value": "11.2.1"
+    },
+    {
+      "key": "sonar.scanner.bootstrapStartTime",
+      "value": "1775972013000"
+    },
+    {
+      "key": "sonar.projectKey",
+      "value": "intelligent-devsecops-pipeline"
+    },
+    {
+      "key": "sonar.working.directory",
+      "value": "/home/jubit/DevSecOpsProject/App/.sonarqube/out/.sonar"
+    },
+    {
+      "key": "sonar.projectBaseDir",
+      "value": "/home/jubit/DevSecOpsProject/App"
+    },
+    {
+      "key": "sonar.pullrequest.cache.basepath",
+      "value": "/home/jubit/DevSecOpsProject/App"
+    },
+    {
+      "key": "sonar.sources",
+      "value": ""
+    },
+    {
+      "key": "sonar.tests",
+      "value": ""
+    },
+    {
+      "key": "sonar.modules",
+      "value": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E"
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.projectKey",
+      "value": "intelligent-devsecops-pipeline:9D7F5858-DA2A-4B56-9160-F56CF21C5A8E"
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.projectName",
+      "value": "App"
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.projectBaseDir",
+      "value": "/home/jubit/DevSecOpsProject/App"
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.working.directory",
+      "value": "/home/jubit/DevSecOpsProject/App/.sonarqube/out/.sonar/mod0"
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.sourceEncoding",
+      "value": "utf-8"
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.tests",
+      "value": ""
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.sources",
+      "value": "/home/jubit/DevSecOpsProject/App/Controllers/WeatherController.cs,/home/jubit/DevSecOpsProject/App/Controllers/WeatherForecastController.cs,/home/jubit/DevSecOpsProject/App/Models/LoginRequest.cs,/home/jubit/DevSecOpsProject/App/Program.cs,/home/jubit/DevSecOpsProject/App/Services/IWeatherService.cs,/home/jubit/DevSecOpsProject/App/Services/WeatherService.cs,/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.GlobalUsings.g.cs,\"/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/.NETCoreApp,Version=v8.0.AssemblyAttributes.cs\",/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.AssemblyInfo.cs,/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.MvcApplicationPartsAssemblyInfo.cs,/home/jubit/DevSecOpsProject/App/wwwroot/index.html,/home/jubit/DevSecOpsProject/App/appsettings.Development.json,/home/jubit/DevSecOpsProject/App/appsettings.json,/home/jubit/DevSecOpsProject/App/App.http,/home/jubit/DevSecOpsProject/App/Properties/launchSettings.json,/home/jubit/DevSecOpsProject/App/obj/SecureApp.csproj.nuget.dgspec.json,/home/jubit/DevSecOpsProject/App/obj/App.csproj.nuget.dgspec.json,/home/jubit/DevSecOpsProject/App/obj/project.assets.json,/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/staticwebassets.build.json,/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/SecureApp.sourcelink.json,/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.sourcelink.json,/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/staticwebassets.development.json,/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/staticwebassets.pack.json,/home/jubit/DevSecOpsProject/App/bin/Debug/net8.0/SecureApp.staticwebassets.runtime.json,/home/jubit/DevSecOpsProject/App/bin/Debug/net8.0/appsettings.Development.json,/home/jubit/DevSecOpsProject/App/bin/Debug/net8.0/appsettings.json,/home/jubit/DevSecOpsProject/App/bin/Debug/net8.0/App.deps.json,/home/jubit/DevSecOpsProject/App/bin/Debug/net8.0/SecureApp.deps.json,/home/jubit/DevSecOpsProject/App/bin/Debug/net8.0/App.staticwebassets.runtime.json,/home/jubit/DevSecOpsProject/App/bin/Debug/net8.0/App.runtimeconfig.json,/home/jubit/DevSecOpsProject/App/bin/Debug/net8.0/SecureApp.runtimeconfig.json"
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.cs.analyzer.projectOutPaths",
+      "value": "/home/jubit/DevSecOpsProject/App/.sonarqube/out/0"
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.cs.roslyn.reportFilePaths",
+      "value": "/home/jubit/DevSecOpsProject/App/.sonarqube/out/0/Issues.json"
+    },
+    {
+      "key": "9D7F5858-DA2A-4B56-9160-F56CF21C5A8E.sonar.cs.scanner.telemetry",
+      "value": "/home/jubit/DevSecOpsProject/App/.sonarqube/out/0/Telemetry.json"
+    },
+    {
+      "key": "sonar.token",
+      "value": "***"
+    },
+    {
+      "key": "sonar.organization",
+      "value": "jubit-pincy"
+    },
+    {
+      "key": "sonar.visualstudio.enable",
+      "value": "false"
+    },
+    {
+      "key": "sonar.host.url",
+      "value": "https://sonarcloud.io"
+    }
+  ]
+}

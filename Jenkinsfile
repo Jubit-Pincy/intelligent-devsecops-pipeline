@@ -1,6 +1,6 @@
 parameters {
-    string(name: 'PROJECT_KEY', defaultValue: 'SecureApp', description: 'SonarQube Project Key')
-    string(name: 'SONAR_URL', defaultValue: 'http://localhost:9000', description: 'SonarQube URL')
+    string(name: 'PROJECT_KEY', defaultValue: 'App', description: 'SonarQube Project Key')
+    string(name: 'SONAR_URL', defaultValue: 'https://sonarcloud.io', description: 'SonarQube URL')
     string(name: 'WEIGHT_BUGS', defaultValue: '3', description: 'Weight for bugs')
     string(name: 'WEIGHT_VULNS', defaultValue: '5', description: 'Weight for vulnerabilities')
     string(name: 'WEIGHT_HOTSPOTS', defaultValue: '2', description: 'Weight for security hotspots')
@@ -13,7 +13,7 @@ parameters {
 pipeline {
     environment {
     PROJECT_KEY = "${env.GIT_URL.replaceFirst(/^.*\/([^\/]+)\.git$/, '$1')}"
-    DEFAULT_SONAR_URL = 'http://localhost:9000'
+    DEFAULT_SONAR_URL = 'https://sonarcloud.io'
     SONAR_URL = "${params.SONAR_URL ?: DEFAULT_SONAR_URL}"
     WEIGHT_BUGS     = "${params.WEIGHT_BUGS ?: '3'}"
     WEIGHT_VULNS    = "${params.WEIGHT_VULNS ?: '5'}"
@@ -65,39 +65,36 @@ pipeline {
         stage('Build & Sonar Analysis') {
             steps {
                 script {
-                    // Define tools once
-                    def msbuildScanner = tool 'SonarScanner for MSBuild'
-                    def bwHome = tool 'Sonar Build Wrapper'
 
                     withSonarQubeEnv('SonarQube') {
                         // --- STRATEGY 1: JAVA (Maven/Gradle) ---
                         if (env.PROJECT_TYPE == 'java' || fileExists('pom.xml')) {
                             echo "Executing Java/Maven Strategy"
-                            // Maven automatically handles scanning and coverage if sonar-maven-plugin is configured
-                            sh "mvn clean verify sonar:sonar -Dsonar.projectKey=${PROJECT_KEY}"
+                            def mvnHome = tool 'Maven 3.9' 
+                            sh "${mvnHome}/bin/mvn clean verify sonar:sonar -Dsonar.projectKey=${PROJECT_KEY}"
                         }
 
                         // --- STRATEGY 2: C/C++ (Build Wrapper) ---
                         else if (env.PROJECT_TYPE == 'cpp' || fileExists('CMakeLists.txt')) {
                             echo "Executing C++ Build Wrapper Strategy"
                             sh """
-                                # Build Wrapper captures the build to help Sonar map macros and headers
-                                ${bwHome}/build-wrapper-linux-x86-64 --out-dir bw-output make clean all
-
                                 sonar-scanner \
                                     -Dsonar.projectKey=${PROJECT_KEY} \
-                                    -Dsonar.sources=. \
-                                    -Dsonar.cfamily.build-wrapper-output=bw-output
+                                    -Dsonar.organization="jubit-pincy" \
+                                    -Dsonar.sources=. 
                             """
                         }
 
                         // --- STRATEGY 3: .NET ---
                         else if (env.PROJECT_TYPE == 'dotnet' || fileExists('SolutionFile.sln')) {
                             echo "Executing .NET Strategy"
+                            def msbuildScanner = tool 'SonarScanner for MSBuild'
                             sh """
                                 WORKSPACE_DIR=\$(pwd)
 
                                 dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
+                                    /o:"jubit-pincy" \  // add your organization key here
+                                    /d:sonar.host.url="https://sonarcloud.io" \
                                     /d:sonar.cs.opencover.reportsPaths="\${WORKSPACE_DIR}/coverage.opencover.xml" \
                                     /d:sonar.exclusions="risk-engine/**,App/Program.cs,reports/**,**/bin/**,**/obj/**"
 

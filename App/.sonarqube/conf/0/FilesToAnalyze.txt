@@ -1,0 +1,15 @@
+﻿/home/jubit/DevSecOpsProject/App/Controllers/WeatherController.cs
+/home/jubit/DevSecOpsProject/App/Controllers/WeatherForecastController.cs
+/home/jubit/DevSecOpsProject/App/Models/LoginRequest.cs
+/home/jubit/DevSecOpsProject/App/Program.cs
+/home/jubit/DevSecOpsProject/App/Services/IWeatherService.cs
+/home/jubit/DevSecOpsProject/App/Services/WeatherService.cs
+/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.GlobalUsings.g.cs
+/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/.NETCoreApp,Version=v8.0.AssemblyAttributes.cs
+/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.AssemblyInfo.cs
+/home/jubit/DevSecOpsProject/App/obj/Debug/net8.0/App.MvcApplicationPartsAssemblyInfo.cs
+/home/jubit/DevSecOpsProject/App/wwwroot/index.html
+/home/jubit/DevSecOpsProject/App/appsettings.Development.json
+/home/jubit/DevSecOpsProject/App/appsettings.json
+/home/jubit/DevSecOpsProject/App/App.http
+/home/jubit/DevSecOpsProject/App/Properties/launchSettings.json
