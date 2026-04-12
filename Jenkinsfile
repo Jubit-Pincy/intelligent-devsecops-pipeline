@@ -88,6 +88,7 @@ pipeline {
                         // --- STRATEGY 3: .NET ---
                         else if (env.PROJECT_TYPE == 'dotnet' || fileExists('SolutionFile.sln')) {
                             echo "Executing .NET Strategy"
+                            def msbuildScanner = tool 'SonarScanner for MSBuild'
                             withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                             sh """
                                 WORKSPACE_DIR=\$(pwd)
@@ -116,7 +117,7 @@ pipeline {
 
                                 dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll end
                             """
-                        }
+                            }
                         }
                         // --- STRATEGY 4: UNIVERSAL FALLBACK (Python/JS) ---
                         else {
