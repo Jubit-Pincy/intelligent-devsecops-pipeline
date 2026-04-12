@@ -17,15 +17,21 @@ namespace App.Controllers
         [HttpGet("{city}")]
         public async Task<IActionResult> GetWeather(string city)
         {
-            var data = await _weatherService.GetWeatherAsync(city);
+            if (string.IsNullOrWhiteSpace(city) || !Regex.IsMatch(city, @"^[a-zA-Z\s]+$"))
+            {
+                return BadRequest("Invalid city name.");
+            }
 
+            var data = await _weatherService.GetWeatherAsync(city);
             return Ok(data);
         }
 
         [HttpGet("health")]
+        [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
         public IActionResult Health()
         {
             return Ok(new { status = "Weather API running" });
         }
+
     }
 }
