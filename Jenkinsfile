@@ -36,7 +36,7 @@ pipeline {
         stage('Detect Project Type') {
             steps {
                 script {
-
+                    sh "rm -rf .sonarqube .scannerwork"
                     def manualType = params.MANUAL_PROJECT_TYPE ?: 'auto'
                     // 1. Check if user provided a manual override
                     if (manualType != 'auto') {
@@ -151,38 +151,53 @@ pipeline {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     script {
                         sh '''
-                        echo "Waiting for Sonar analysis to finish..."
-                        
-                        TASK_ID=$(awk -F= '/ceTaskId/ {print $2}' .sonarqube/out/.sonar/report-task.txt)
+                    echo "Locating Sonar analysis report..."
 
-                        STATUS="PENDING"
-                        COUNT=0
-                        MAX_ATTEMPTS=20
+                    # Check for the Universal Scanner path (Python) first
+                    if [ -f ".scannerwork/report-task.txt" ]; then
+                        REPORT_FILE=".scannerwork/report-task.txt"
+                    # Fallback to the MSBuild scanner path (.NET)
+                    elif [ -f ".sonarqube/out/.sonar/report-task.txt" ]; then
+                        REPORT_FILE=".sonarqube/out/.sonar/report-task.txt"
+                    else
+                        echo "ERROR: No Sonar report-task.txt found in .scannerwork or .sonarqube"
+                        exit 1
+                    fi
 
-                        echo "Using SONAR_URL: \$SONAR_URL"
+                    echo "Reading Task ID from: $REPORT_FILE"
+                    TASK_ID=$(awk -F= '/ceTaskId/ {print $2}' "$REPORT_FILE")
 
-                        while [ "$STATUS" != "SUCCESS" ] && [ $COUNT -lt $MAX_ATTEMPTS ]; do
+                    STATUS="PENDING"
+                    COUNT=0
+                    MAX_ATTEMPTS=20
 
-                            STATUS=\$(curl -s -u \$SONAR_TOKEN: "\$SONAR_URL/api/ce/task?id=\$TASK_ID" | jq -r '.task.status')
+                    echo "Using SONAR_URL: $SONAR_URL"
 
-                            echo "Sonar status: $STATUS"
+                    while [ "$STATUS" != "SUCCESS" ] && [ $COUNT -lt $MAX_ATTEMPTS ]; do
+                        # Use -L to follow redirects if SonarCloud moves the API endpoint
+                        STATUS=$(curl -s -L -u $SONAR_TOKEN: "$SONAR_URL/api/ce/task?id=$TASK_ID" | jq -r '.task.status')
 
-                            if [ "$STATUS" = "FAILED" ]; then
-                                echo "Sonar analysis failed"
-                                exit 1
-                            fi
+                        echo "Sonar status for Task $TASK_ID: $STATUS"
 
-                            COUNT=$((COUNT+1))
-                            sleep 3
-                        done
-                        echo "TASK_ID: $TASK_ID"
-                        echo "SONAR_URL: \$SONAR_URL"
-                        if [ "$STATUS" != "SUCCESS" ]; then
-                            echo "Sonar analysis timeout"
+                        if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
+                            echo "Sonar analysis failed or was canceled"
                             exit 1
                         fi
 
-                        echo "Sonar analysis completed."
+                        if [ "$STATUS" = "SUCCESS" ]; then
+                            break
+                        fi
+
+                        COUNT=$((COUNT+1))
+                        sleep 5
+                    done
+
+                    if [ "$STATUS" != "SUCCESS" ]; then
+                        echo "Sonar analysis timeout after $MAX_ATTEMPTS attempts"
+                        exit 1
+                    fi
+
+                    echo "Sonar analysis completed successfully."
                         '''
                     }
                 }
