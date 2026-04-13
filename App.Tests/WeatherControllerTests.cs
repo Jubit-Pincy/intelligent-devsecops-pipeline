@@ -39,5 +39,37 @@ namespace App.Tests
             var okResult = Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(result);
             Assert.NotNull(okResult.Value);
         }
+        [Fact]
+        public async Task GetWeather_ReturnsBadRequest_WhenCityIsInvalid()
+        {
+            // Arrange
+            var mockService = new Mock<IWeatherService>();
+            var controller = new WeatherController(mockService.Object);
+            string invalidCity = "London123"; // Contains numbers, should fail regex
+        
+            // Act
+            var result = await controller.GetWeather(invalidCity);
+        
+            // Assert
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            Assert.Equal("Invalid city name.", badRequestResult.Value);
+        }
+        
+        [Theory]
+        [InlineData("")]
+        [InlineData(null)]
+        [InlineData("   ")]
+        public async Task GetWeather_ReturnsBadRequest_WhenCityIsMissing(string city)
+        {
+            // Arrange
+            var mockService = new Mock<IWeatherService>();
+            var controller = new WeatherController(mockService.Object);
+        
+            // Act
+            var result = await controller.GetWeather(city);
+        
+            // Assert
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
     }
 }
