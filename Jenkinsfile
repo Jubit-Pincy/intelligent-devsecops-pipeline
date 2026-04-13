@@ -125,7 +125,17 @@ pipeline {
                         // --- STRATEGY 4: UNIVERSAL FALLBACK (Python/JS) ---
                         else if (env.PROJECT_TYPE == 'python' || env.PROJECT_TYPE == 'node') {
                                 echo "Executing Universal Scanner Strategy for ${env.PROJECT_TYPE}"
-                                sh "sonar-scanner -Dsonar.projectKey=${PROJECT_KEY} -Dsonar.sources=."
+                                def scannerHome = tool 'SonarScanner' 
+    
+                                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                                    sh """
+                                        ${scannerHome}/bin/sonar-scanner \
+                                        -Dsonar.projectKey=\${PROJECT_KEY} \
+                                        -Dsonar.sources=. \
+                                        -Dsonar.host.url=\${SONAR_URL} \
+                                        -Dsonar.login=\${SONAR_TOKEN}
+                                    """
+                                }
                             }
                         else {
                             error "Unknown Project Type: ${env.PROJECT_TYPE}"
