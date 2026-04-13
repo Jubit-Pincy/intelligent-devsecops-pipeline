@@ -131,9 +131,10 @@ pipeline {
                                     sh """
                                         ${scannerHome}/bin/sonar-scanner \
                                         -Dsonar.projectKey=\${PROJECT_KEY} \
+                                        -Dsonar.organization=jubit-pincy \
                                         -Dsonar.sources=. \
-                                        -Dsonar.host.url=\${SONAR_URL} \
-                                        -Dsonar.login=\${SONAR_TOKEN}
+                                        -Dsonar.host.url=https://sonarcloud.io \
+                                        -Dsonar.token=\${SONAR_TOKEN}
                                     """
                                 }
                             }
