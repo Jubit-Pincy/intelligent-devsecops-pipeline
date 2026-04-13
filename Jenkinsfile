@@ -70,14 +70,14 @@ pipeline {
 
                     withSonarQubeEnv('SonarQube') {
                         // --- STRATEGY 1: JAVA (Maven/Gradle) ---
-                        if (env.PROJECT_TYPE == 'java' || fileExists('pom.xml')) {
+                        if (env.PROJECT_TYPE == 'java') {
                             echo "Executing Java/Maven Strategy"
                             def mvnHome = tool 'Maven 3.9' 
                             sh "${mvnHome}/bin/mvn clean verify sonar:sonar -Dsonar.projectKey=\${PROJECT_KEY}"
                         }
 
                         // --- STRATEGY 2: C/C++ (Build Wrapper) ---
-                        else if (env.PROJECT_TYPE == 'cpp' || fileExists('CMakeLists.txt')) {
+                        else if (env.PROJECT_TYPE == 'cpp') {
                             echo "Executing C++ Build Wrapper Strategy"
                             sh """
                                 sonar-scanner \
@@ -88,7 +88,7 @@ pipeline {
                         }
 
                         // --- STRATEGY 3: .NET ---
-                        else if (env.PROJECT_TYPE == 'dotnet' || fileExists('SolutionFile.sln')) {
+                        else if (env.PROJECT_TYPE == 'dotnet') {
                             echo "Executing .NET Strategy"
                             def msbuildScanner = tool 'SonarScanner for MSBuild'
                             withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
@@ -123,10 +123,13 @@ pipeline {
                             }
                         }
                         // --- STRATEGY 4: UNIVERSAL FALLBACK (Python/JS) ---
+                        else if (env.PROJECT_TYPE == 'python' || env.PROJECT_TYPE == 'node') {
+                                echo "Executing Universal Scanner Strategy for ${env.PROJECT_TYPE}"
+                                sh "sonar-scanner -Dsonar.projectKey=${PROJECT_KEY} -Dsonar.sources=."
+                            }
                         else {
-                            echo "Executing Universal Scanner Strategy"
-                            sh "sonar-scanner -Dsonar.projectKey=\${PROJECT_KEY} -Dsonar.sources=."
-                        }
+                            error "Unknown Project Type: ${env.PROJECT_TYPE}"
+                            }
                     }
                 }
             }
