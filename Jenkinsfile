@@ -73,7 +73,7 @@ pipeline {
                         if (env.PROJECT_TYPE == 'java' || fileExists('pom.xml')) {
                             echo "Executing Java/Maven Strategy"
                             def mvnHome = tool 'Maven 3.9' 
-                            sh "${mvnHome}/bin/mvn clean verify sonar:sonar -Dsonar.projectKey=${PROJECT_KEY}"
+                            sh "${mvnHome}/bin/mvn clean verify sonar:sonar -Dsonar.projectKey=\${PROJECT_KEY}"
                         }
 
                         // --- STRATEGY 2: C/C++ (Build Wrapper) ---
@@ -81,7 +81,7 @@ pipeline {
                             echo "Executing C++ Build Wrapper Strategy"
                             sh """
                                 sonar-scanner \
-                                    -Dsonar.projectKey=${PROJECT_KEY} \
+                                    -Dsonar.projectKey=\${PROJECT_KEY} \
                                     -Dsonar.organization="jubit-pincy" \
                                     -Dsonar.sources=. 
                             """
@@ -95,10 +95,10 @@ pipeline {
                             sh """
                                 WORKSPACE_DIR=\$(pwd)
 
-                                dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll begin /k:${PROJECT_KEY} \
+                                dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll begin /k:\${PROJECT_KEY} \
                                     /o:"jubit-pincy" \
                                     /d:sonar.host.url="https://sonarcloud.io" \
-                                    /d:sonar.token="${SONAR_TOKEN}" \
+                                    /d:sonar.token="\${SONAR_TOKEN}" \
                                     /d:sonar.cs.opencover.reportsPaths="\${WORKSPACE_DIR}/coverage.opencover.xml" \
                                     /d:sonar.exclusions="risk-engine/**,App/Program.cs,reports/**,**/bin/**,**/obj/**"
 
@@ -118,14 +118,14 @@ pipeline {
                                 echo "================================"
 
                                 dotnet ${msbuildScanner}/SonarScanner.MSBuild.dll end \
-                                /d:sonar.token="${SONAR_TOKEN}"
+                                /d:sonar.token="\${SONAR_TOKEN}"
                             """
                             }
                         }
                         // --- STRATEGY 4: UNIVERSAL FALLBACK (Python/JS) ---
                         else {
                             echo "Executing Universal Scanner Strategy"
-                            sh "sonar-scanner -Dsonar.projectKey=${PROJECT_KEY} -Dsonar.sources=."
+                            sh "sonar-scanner -Dsonar.projectKey=\${PROJECT_KEY} -Dsonar.sources=."
                         }
                     }
                 }

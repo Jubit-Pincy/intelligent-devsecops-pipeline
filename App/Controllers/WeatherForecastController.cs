@@ -23,5 +23,12 @@ namespace App.Controllers
                 user = request.Username
             });
         }
+        [HttpGet("health")]
+        [ProducesResponseType(typeof(object), StatusCodes.Status200OK)] 
+        public IActionResult HealthCheck() { ... }
+
+        [HttpPost("login")]
+        [ProducesResponseType(typeof(object), StatusCodes.Status200OK)] 
+        public IActionResult Login([FromBody] LoginRequest request) { ... }
     }
 }

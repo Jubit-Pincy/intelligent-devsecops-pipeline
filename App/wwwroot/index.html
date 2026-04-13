@@ -8,7 +8,7 @@
 
 body{
     margin:0;
-    font-family:Segoe UI,Arial;
+    font-family:Segoe UI,Arial, sans-serif;
     background: linear-gradient(120deg,#3a7bd5,#00d2ff);
     color:white;
     min-height:100%;
@@ -212,12 +212,10 @@ spinner.style.display="none";
 card.style.display="block";
 
 }
-catch(e){
-
-spinner.style.display="none";
-
-alert("Could not load weather data");
-
+catch(e) {
+    console.error("API Error:", e); 
+    spinner.style.display = "none";
+    alert("Could not load weather data. Please try again later.");
 }
 
 }
