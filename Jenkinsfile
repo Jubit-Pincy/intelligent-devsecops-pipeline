@@ -230,7 +230,7 @@ pipeline {
                     
                     // 2. Map ports based on project type (to keep your existing structure)
                     def portMap = [
-                        'dotnet': '8081:5000',
+                        'dotnet': '8081:8080',
                         'node'  : '8082:3000',
                         'python': '8083:5000',
                         'java'  : '8084:8080'
@@ -241,10 +241,10 @@ pipeline {
         
                     // 3. Single dynamic shell block for all project types
                     sh """
-                        docker build -t ${imageName} .
+                        docker build --build-arg PROJECT_NAME=App/App.csproj -t ${imageName} .
                         docker stop ${containerName} || true
                         docker rm ${containerName} || true
-                        docker run -d -p ${ports} --name ${containerName} ${imageName}
+                        docker run -d -p 8081:8080 --name ${containerName} ${imageName}
                     """
         
                     // 🔶 MEDIUM RISK → mark unstable
