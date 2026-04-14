@@ -44,15 +44,29 @@ pipeline {
         stage('Detect Project Type') {
             steps {
                 script {
-                    sh "rm -rf .sonarqube .scannerwork"
+                    sh "rm -rf .sonarqube .scannerwork target/sonar"
+
+                    env.DEPLOY_ENABLED = 'false'
+                    env.DEPLOY_SKIP_REASON = ''
+
                     def manualType = params.MANUAL_PROJECT_TYPE ?: 'auto'
-                    // 1. Check if user provided a manual override
+
+                    def pythonFile = sh(
+                        script: "find . -type f -name '*.py' -not -path './.git/*' -not -path './risk-engine/*' | head -n 1",
+                        returnStdout: true
+                    ).trim()
+
+                    def dotnetProject = sh(
+                        script: "find . -maxdepth 3 -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*Tests*' | head -n 1",
+                        returnStdout: true
+                    ).trim()
+
+                    env.DOTNET_PROJECT = dotnetProject
+
                     if (manualType != 'auto') {
                         env.PROJECT_TYPE = manualType
                         echo "Using Manual Override: ${env.PROJECT_TYPE}"
-                    } 
-                    // 2. Otherwise, perform the Automated Discovery
-                    else {
+                    } else {
                         if (sh(script: "ls *.sln", returnStatus: true) == 0) {
                             env.PROJECT_TYPE = 'dotnet'
                         } else if (fileExists('pom.xml')) {
@@ -64,9 +78,12 @@ pipeline {
                         } else if (fileExists('CMakeLists.txt') || fileExists('Makefile')) {
                             env.PROJECT_TYPE = 'cpp'
                         } else {
-                            error("Unsupported project type - No Solution, POM, or Requirements found.")
+                            error("Unsupported project type - no recognizable project files found.")
                         }
+
                         echo "Automated Detection: ${env.PROJECT_TYPE}"
+                    }
+
                     if (!fileExists('Dockerfile')) {
                         env.DEPLOY_SKIP_REASON = 'No Dockerfile found for this project.'
                     } else if (env.PROJECT_TYPE == 'dotnet') {
@@ -93,11 +110,17 @@ pipeline {
                         } else {
                             env.DEPLOY_SKIP_REASON = 'Python analysis can run, but deployment is skipped because no Python project manifest was found.'
                         }
+                    } else if (env.PROJECT_TYPE == 'cpp') {
+                        env.DEPLOY_SKIP_REASON = 'C/C++ analysis can run, but deployment is not configured for this pipeline.'
                     }
-                    }
+
+                    echo "Project type: ${env.PROJECT_TYPE}"
+                    echo "Deploy enabled: ${env.DEPLOY_ENABLED}"
+                    echo "Deploy skip reason: ${env.DEPLOY_SKIP_REASON}"
                 }
             }
         }
+
 
         stage('Build & Sonar Analysis') {
             steps {
@@ -185,19 +208,28 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     script {
+                    withEnv(["PROJECT_TYPE=${env.PROJECT_TYPE}"]) {
                         sh '''
-                    echo "Locating Sonar analysis report..."
+                    echo "Locating Sonar analysis report for project type: $PROJECT_TYPE"
 
-                    # Check for the Universal Scanner path (Python) first
-                    if [ -f ".scannerwork/report-task.txt" ]; then
-                        REPORT_FILE=".scannerwork/report-task.txt"
-                    # Fallback to the MSBuild scanner path (.NET)
-                    elif [ -f ".sonarqube/out/.sonar/report-task.txt" ]; then
+                    REPORT_FILE=""
+
+                    if [ "$PROJECT_TYPE" = "dotnet" ]; then
                         REPORT_FILE=".sonarqube/out/.sonar/report-task.txt"
+                    elif [ "$PROJECT_TYPE" = "java" ]; then
+                        REPORT_FILE="target/sonar/report-task.txt"
                     else
-                        echo "ERROR: No Sonar report-task.txt found in .scannerwork or .sonarqube"
+                        REPORT_FILE=".scannerwork/report-task.txt"
+                    fi
+
+                    if [ ! -f "$REPORT_FILE" ]; then
+                        echo "ERROR: Expected Sonar report file not found: $REPORT_FILE"
+                        echo "Existing report-task.txt files:"
+                        find . -name report-task.txt -not -path './.git/*' -print
                         exit 1
                     fi
+
+                    echo "Using Sonar report file: $REPORT_FILE"
 
                     echo "Reading Task ID from: $REPORT_FILE"
                     TASK_ID=$(awk -F= '/ceTaskId/ {print $2}' "$REPORT_FILE")
@@ -237,6 +269,7 @@ pipeline {
                     }
                 }
             }
+        }
         }
 
         stage('Risk Evaluation') {
