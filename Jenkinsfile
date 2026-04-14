@@ -20,7 +20,7 @@ pipeline {
     WEIGHT_BUGS     = "${params.WEIGHT_BUGS ?: '3'}"
     WEIGHT_VULNS    = "${params.WEIGHT_VULNS ?: '5'}"
     WEIGHT_HOTSPOTS = "${params.WEIGHT_HOTSPOTS ?: '2'}"
-    DEPLOY-ENABLED = 'false'
+    DEPLOY_ENABLED = 'false'
     DEPLOY_SKIP_REASON = ''
 
     }
