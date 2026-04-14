@@ -32,7 +32,13 @@ pipeline {
                     url: 'https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline.git'
             }
         }
-
+        stage('Cleanup Workspace') {
+            steps {
+                // This wipes out the metadata from previous .NET or Python runs
+                sh "rm -rf .sonarqube .scannerwork"
+                echo "Workspace cleaned of old Sonar metadata."
+            }
+        }
         stage('Detect Project Type') {
             steps {
                 script {
@@ -49,7 +55,7 @@ pipeline {
                             env.PROJECT_TYPE = 'dotnet'
                         } else if (fileExists('pom.xml')) {
                             env.PROJECT_TYPE = 'java'
-                        } else if (fileExists('requirements.txt')) {
+                        } else if (fileExists('requirements.txt') || fileExists('pyproject.toml') || fileExists('setup.py') || pythonFile) {
                             env.PROJECT_TYPE = 'python'
                         } else if (fileExists('package.json')) {
                             env.PROJECT_TYPE = 'node'
@@ -59,6 +65,33 @@ pipeline {
                             error("Unsupported project type - No Solution, POM, or Requirements found.")
                         }
                         echo "Automated Detection: ${env.PROJECT_TYPE}"
+                    if (!fileExists('Dockerfile')) {
+                        env.DEPLOY_SKIP_REASON = 'No Dockerfile found for this project.'
+                    } else if (env.PROJECT_TYPE == 'dotnet') {
+                        if (env.DOTNET_PROJECT) {
+                            env.DEPLOY_ENABLED = 'true'
+                        } else {
+                            env.DEPLOY_SKIP_REASON = 'No .csproj file found for .NET Docker build.'
+                        }
+                    } else if (env.PROJECT_TYPE == 'java') {
+                        if (fileExists('pom.xml')) {
+                            env.DEPLOY_ENABLED = 'true'
+                        } else {
+                            env.DEPLOY_SKIP_REASON = 'No pom.xml found for Java deployment.'
+                        }
+                    } else if (env.PROJECT_TYPE == 'node') {
+                        if (fileExists('package.json')) {
+                            env.DEPLOY_ENABLED = 'true'
+                        } else {
+                            env.DEPLOY_SKIP_REASON = 'No package.json found for Node deployment.'
+                        }
+                    } else if (env.PROJECT_TYPE == 'python') {
+                        if (fileExists('requirements.txt') || fileExists('pyproject.toml') || fileExists('setup.py') || fileExists('Pipfile')) {
+                            env.DEPLOY_ENABLED = 'true'
+                        } else {
+                            env.DEPLOY_SKIP_REASON = 'Python analysis can run, but deployment is skipped because no Python project manifest was found.'
+                        }
+                    }
                     }
                 }
             }
@@ -248,7 +281,7 @@ pipeline {
         }
         stage('Deploy Application') {
             when {
-                expression { env.RISK_LEVEL != 'HIGH' }
+                expression { env.RISK_LEVEL != 'HIGH' && env.DEPLOY_ENABLED == 'true'}
             }
             steps {
                 script {
@@ -273,7 +306,7 @@ pipeline {
                         docker build --build-arg PROJECT_NAME=App/App.csproj -t ${imageName} .
                         docker stop ${containerName} || true
                         docker rm ${containerName} || true
-                        docker run -d -p 8081:8080 --name ${containerName} ${imageName}
+                        docker run -d -p ${ports} --name ${containerName} ${imageName}
                     """
         
                     // 🔶 MEDIUM RISK → mark unstable
@@ -284,6 +317,14 @@ pipeline {
         
                     sh 'docker image prune -f'
                 }
+            }
+        }
+        stage('Skip Deployment') {
+            when {
+                expression { env.RISK_LEVEL != 'HIGH' && env.DEPLOY_ENABLED != 'true' }
+            }
+            steps {
+                echo "Deployment skipped for ${env.PROJECT_TYPE}: ${env.DEPLOY_SKIP_REASON}"
             }
         }
     }
