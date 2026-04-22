@@ -1,481 +1,449 @@
 from datetime import datetime, timezone, timedelta
-import os
-import requests
-import sys
-import json
+import os, sys, json, requests
 
-
-def get_actual_project_key():
-    # Path where SonarScanner saves the metadata of the last run
-    report_path = ".sonarqube/out/.sonar/report-task.txt"
-    if os.path.exists(report_path):
-        with open(report_path, "r") as f:
-            for line in f:
+# ── CONFIG ──────────────────────────────────────────────────────────
+def get_project_key():
+    for path in [".sonarqube/out/.sonar/report-task.txt",
+                 ".scannerwork/report-task.txt",
+                 "target/sonar/report-task.txt"]:
+        if os.path.exists(path):
+            for line in open(path):
                 if line.startswith("projectKey="):
-                    return line.split("=")[1].strip()
-    
-    # Fallback to environment variable if file is missing
+                    return line.split("=", 1)[1].strip()
     return os.getenv("PROJECT_KEY", "DefaultProject")
 
-PROJECT_KEY = get_actual_project_key()
+PROJECT_KEY   = get_project_key()
+SONAR_URL     = os.getenv("SONAR_URL", "https://sonarcloud.io")
+SONAR_TOKEN   = os.getenv("SONAR_TOKEN")
+PROJECT_REPO  = "https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline"
+RUNNING_APP   = "http://localhost:8081/"
+IST           = timezone(timedelta(hours=5, minutes=30))
 
-SONAR_URL = os.getenv("SONAR_URL")
-SONAR_TOKEN = os.getenv("SONAR_TOKEN")
-SONAR_DASHBOARD = f"{SONAR_URL}/dashboard?id={PROJECT_KEY}"
-PROJECT_REPO = "https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline"
-RUNNING_APP = "http://localhost:8081/"
+if not SONAR_TOKEN:
+    print("ERROR: SONAR_TOKEN is not set"); sys.exit(1)
 
+def sonar_get(path, params=None):
+    r = requests.get(f"{SONAR_URL}{path}", params=params,
+                     auth=(SONAR_TOKEN, ""), timeout=30)
+    r.raise_for_status()
+    return r.json()
 
-IST = timezone(timedelta(hours=5, minutes=30))
-
-if not PROJECT_KEY or not SONAR_TOKEN:
-    print("Missing required environment variables")
-    sys.exit(1)
-
-url = f"{SONAR_URL}/api/measures/component"
-# Use a flexible comma-separated list of metrics from the environment
-requested_metrics = os.getenv("METRIC_KEYS", "bugs,vulnerabilities,security_hotspots")
-
-params = {
+# ── FETCH SUMMARY METRICS ────────────────────────────────────────────
+metrics_resp = sonar_get("/api/measures/component", {
     "component": PROJECT_KEY,
-    "metricKeys": requested_metrics,
+    "metricKeys": "bugs,vulnerabilities,security_hotspots,code_smells,"
+                  "coverage,duplicated_lines_density,ncloc",
     "branch": "main"
+})
+metrics_dict = {
+    m["metric"]: m["value"]
+    for m in metrics_resp.get("component", {}).get("measures", [])
 }
 
-response = requests.get(url, params=params, auth=(SONAR_TOKEN, ""))
-data = response.json()
+def mi(key, default=0):
+    try: return int(metrics_dict.get(key, default))
+    except: return default
 
-measures_data = data.get("component", {}).get("measures", [])
+def mf(key, default=0.0):
+    try: return float(metrics_dict.get(key, default))
+    except: return default
 
-# Convert the list of measures into a dictionary for safe lookup
-# Example: {'bugs': 5, 'vulnerabilities': 2, 'security_hotspots': 0}
-metrics_dict = {m["metric"]: int(m["value"]) for m in measures_data}
+bugs         = mi("bugs")
+vulns        = mi("vulnerabilities")
+hotspots     = mi("security_hotspots")
+code_smells  = mi("code_smells")
+coverage     = mf("coverage")
+duplication  = mf("duplicated_lines_density")
+ncloc        = mi("ncloc")
 
-# Helper to get numeric values from the environment safely
-def get_safe_int(env_var, default_value):
-    val = os.getenv(env_var)
-    if val is None or str(val).strip().lower() == "null" or str(val).strip() == "":
-        return default_value
-    try:
-        return int(val)
-    except ValueError:
-        return default_value
+# ── FETCH ISSUE DETAILS ──────────────────────────────────────────────
+def fetch_issues(types, severities=None, page_size=10):
+    params = {
+        "componentKeys": PROJECT_KEY,
+        "types": types,
+        "ps": page_size,
+        "p": 1
+    }
+    if severities:
+        params["severities"] = severities
+    data = sonar_get("/api/issues/search", params)
+    return data.get("issues", [])
 
-# Get metric values from the dictionary (default to 0 if missing)
-bugs = metrics_dict.get("bugs", 0)
-vulns = metrics_dict.get("vulnerabilities", 0)
-hotspots = metrics_dict.get("security_hotspots", 0)
+bug_issues  = fetch_issues("BUG")
+vuln_issues = fetch_issues("VULNERABILITY")
 
-# Get weights from environment variables
-bugs_weight = get_safe_int("WEIGHT_BUGS", 3)
-vulns_weight = get_safe_int("WEIGHT_VULNS", 5)
-hotspots_weight = get_safe_int("WEIGHT_HOTSPOTS", 2)
+# Hotspots use a separate API
+def fetch_hotspots(page_size=10):
+    data = sonar_get("/api/hotspots/search", {
+        "projectKey": PROJECT_KEY,
+        "ps": page_size
+    })
+    return data.get("hotspots", [])
 
-# Calculate risk score
-risk_score = (
-    (bugs * bugs_weight) +
-    (vulns * vulns_weight) +
-    (hotspots * hotspots_weight)
-)
+hotspot_issues = fetch_hotspots()
 
-print(f"Weights → Bugs: {bugs_weight}, Vulns: {vulns_weight}, Hotspots: {hotspots_weight}")
+# ── WEIGHTS & RISK SCORE ─────────────────────────────────────────────
+def safe_int(env_var, default):
+    v = os.getenv(env_var, "")
+    try: return int(v)
+    except: return default
 
+bugs_weight     = safe_int("WEIGHT_BUGS", 3)
+vulns_weight    = safe_int("WEIGHT_VULNS", 5)
+hotspots_weight = safe_int("WEIGHT_HOTSPOTS", 2)
+risk_score = (bugs * bugs_weight) + (vulns * vulns_weight) + (hotspots * hotspots_weight)
+
+# ── HISTORY & TREND ──────────────────────────────────────────────────
+os.makedirs("reports", exist_ok=True)
 history_file = "reports/history.json"
 history = []
-
-# Ensure reports folder exists
-os.makedirs("reports", exist_ok=True)
-
-# Load history if exists
 if os.path.exists(history_file):
-    history = []
     try:
-        with open(history_file, "r") as f:
-            history = json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
-        history = []
-# Determine previous score
+        history = json.load(open(history_file))
+    except: pass
+
 previous_score = history[-1]["risk_score"] if history else None
-
-# Determine trend
-if previous_score is not None:
-    if risk_score > previous_score:
-        trend = "↑ Risk Increased"
-    elif risk_score < previous_score:
-        trend = "↓ Risk Reduced"
-    else:
-        trend = "→ Risk Stable"
-else:
+if previous_score is None:
     trend = "First Analysis Run"
+elif risk_score > previous_score:
+    trend = "↑ Risk Increased"
+elif risk_score < previous_score:
+    trend = "↓ Risk Reduced"
+else:
+    trend = "→ Risk Stable"
 
-# Append new record
 history.append({
     "timestamp": datetime.now(IST).strftime("%d-%m-%Y %H:%M:%S"),
     "risk_score": risk_score
 })
+json.dump(history, open(history_file, "w"), indent=2)
 
-# Save updated history
-with open(history_file, "w") as f:
-    json.dump(history, f, indent=4, default=str)
-
-if risk_score <= 2:
-    level = "LOW"
-elif risk_score <= 5:
-    level = "MEDIUM"
-else:
-    level = "HIGH"
-
-# --- Adaptive Decision Logic ---
+# ── RISK CLASSIFICATION ──────────────────────────────────────────────
+if risk_score <= 2:    level = "LOW"
+elif risk_score <= 5:  level = "MEDIUM"
+else:                  level = "HIGH"
 
 if level == "HIGH":
-    decision = "BUILD BLOCKED DUE TO HIGH RISK"
-    exit_code = 1
-
+    decision, exit_code = "BUILD BLOCKED DUE TO HIGH RISK", 1
 elif level == "MEDIUM":
     if "Increased" in trend:
-        decision = "MANUAL SECURITY REVIEW REQUIRED (Risk Increasing)"
-        exit_code = 0
+        decision, exit_code = "MANUAL SECURITY REVIEW REQUIRED (Risk Increasing)", 0
     else:
-        decision = "BUILD APPROVED WITH WARNINGS"
-        exit_code = 0
-
-elif level == "LOW":
-    if "Increased" in trend:
-        decision = "BUILD APPROVED - MONITOR RISK (Increasing Trend)"
-        exit_code = 0
-    else:
-        decision = "BUILD APPROVED"
-        exit_code = 0
-
-print("Risk Score:", risk_score)
-print("Risk Level:", level)
-print("Governance Action:", decision)
-# print("RAW SONAR RESPONSE:", data)
-
-if level == "HIGH":
-    summary = f"""
-    This build was BLOCKED because the system detected
-    {vulns} vulnerabilities, {bugs} bugs, and {hotspots} security hotspots.
-    Immediate remediation is required before deployment.
-    """
-elif level == "MEDIUM":
-    summary = f"""
-    This build was approved with warnings due to
-    {vulns} vulnerabilities, {bugs} bugs, and {hotspots} security hotspots.
-    Manual review is recommended.
-    """
+        decision, exit_code = "BUILD APPROVED WITH WARNINGS", 0
 else:
-    summary = f"""
-    This build was approved as the detected issues
-    ({vulns} vulnerabilities, {bugs} bugs, {hotspots} hotspots)
-    are within acceptable risk thresholds.
-    """
+    decision, exit_code = ("BUILD APPROVED - MONITOR RISK" if "Increased" in trend
+                           else "BUILD APPROVED"), 0
 
-print("Decision:", decision)
-print("Risk Trend:", trend)
+print(f"Risk Score: {risk_score}  Level: {level}  Decision: {decision}")
 
-history_labels = [entry["timestamp"] for entry in history]
-history_scores = [entry["risk_score"] for entry in history]
+# ── HTML HELPERS ──────────────────────────────────────────────────────
+SEVERITY_COLOR = {
+    "BLOCKER": "#e74c3c", "CRITICAL": "#e67e22",
+    "MAJOR": "#f39c12",   "MINOR": "#3498db", "INFO": "#95a5a6"
+}
 
-html = f"""
-<!DOCTYPE html>
+def severity_badge(sev):
+    color = SEVERITY_COLOR.get(sev.upper(), "#95a5a6")
+    return (f'<span style="background:{color};color:white;padding:2px 8px;'
+            f'border-radius:10px;font-size:11px;font-weight:600">{sev}</span>')
+
+def issue_rows(issues, issue_type):
+    if not issues:
+        return ('<tr><td colspan="4" style="text-align:center;color:#888;'
+                'padding:20px">No issues found ✓</td></tr>')
+    rows = []
+    for i in issues:
+        sev   = i.get("severity", i.get("vulnerabilityProbability", "INFO"))
+        msg   = i.get("message", "—")[:120]
+        comp  = i.get("component", "—").split(":")[-1]
+        line  = i.get("line", "—")
+        rows.append(
+            f"<tr>"
+            f"<td>{severity_badge(sev)}</td>"
+            f"<td style='font-family:monospace;font-size:13px'>{comp}</td>"
+            f"<td style='text-align:center'>{line}</td>"
+            f"<td>{msg}</td>"
+            f"</tr>"
+        )
+    return "\n".join(rows)
+
+def hotspot_rows(issues):
+    if not issues:
+        return ('<tr><td colspan="4" style="text-align:center;color:#888;'
+                'padding:20px">No hotspots found ✓</td></tr>')
+    rows = []
+    for i in issues:
+        prob  = i.get("vulnerabilityProbability", "LOW")
+        msg   = i.get("message", "—")[:120]
+        comp  = i.get("component", "—").split(":")[-1]
+        line  = i.get("line", "—")
+        rows.append(
+            f"<tr>"
+            f"<td>{severity_badge(prob)}</td>"
+            f"<td style='font-family:monospace;font-size:13px'>{comp}</td>"
+            f"<td style='text-align:center'>{line}</td>"
+            f"<td>{msg}</td>"
+            f"</tr>"
+        )
+    return "\n".join(rows)
+
+def gauge_color(score):
+    if score > 5: return "#e74c3c"
+    if score > 2: return "#f39c12"
+    return "#2ecc71"
+
+history_labels = [e["timestamp"] for e in history]
+history_scores = [e["risk_score"]  for e in history]
+SONAR_DASH     = f"{SONAR_URL}/dashboard?id={PROJECT_KEY}"
+
+# ── HTML REPORT ───────────────────────────────────────────────────────
+html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SecureApp Security Dashboard</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DevSecOps Security Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-body {{
-    font-family: 'Segoe UI', Arial, sans-serif;
-    background:#f4f6f9;
-    margin:0;
-    padding:30px;
+:root {{
+  --bg:#0f1117; --surface:#1a1d27; --surface2:#22263a;
+  --accent:#4f8ef7; --green:#2ecc71; --yellow:#f39c12;
+  --red:#e74c3c; --text:#e8eaf0; --muted:#8b90a0;
+  --radius:12px; --shadow:0 4px 24px rgba(0,0,0,.4);
 }}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;padding:24px}}
+a{{color:var(--accent);text-decoration:none}}
 
-.container {{
-    max-width:1100px;
-    margin:auto;
-}}
+/* Layout */
+.wrap{{max-width:1200px;margin:auto;display:flex;flex-direction:column;gap:20px}}
 
-.header {{
-    background: linear-gradient(90deg,#1f2d3d,#34495e);
-    color:white;
-    padding:25px;
-    border-radius:8px;
-}}
+/* Header */
+.header{{background:linear-gradient(135deg,#1f2d50,#2c3e6e);border-radius:var(--radius);padding:28px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;box-shadow:var(--shadow)}}
+.header h1{{font-size:1.6rem;font-weight:700;letter-spacing:.5px}}
+.header .meta{{font-size:.85rem;color:var(--muted);margin-top:6px}}
 
-.cards {{
-    display:flex;
-    gap:20px;
-    margin-top:20px;
-}}
+/* Risk badge in header */
+.risk-pill{{padding:8px 20px;border-radius:30px;font-weight:700;font-size:1.1rem;letter-spacing:.5px}}
+.risk-LOW{{background:rgba(46,204,113,.15);color:#2ecc71;border:2px solid #2ecc71}}
+.risk-MEDIUM{{background:rgba(243,156,18,.15);color:#f39c12;border:2px solid #f39c12}}
+.risk-HIGH{{background:rgba(231,76,60,.15);color:#e74c3c;border:2px solid #e74c3c}}
 
-.card {{
-    background:white;
-    padding:20px;
-    border-radius:8px;
-    flex:1;
-    box-shadow:0 2px 8px rgba(0,0,0,0.1);
-    text-align:center;
-}}
+/* Cards row */
+.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}}
+.card{{background:var(--surface);border-radius:var(--radius);padding:20px;text-align:center;box-shadow:var(--shadow);border:1px solid rgba(255,255,255,.05)}}
+.card .label{{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}}
+.card .value{{font-size:2.2rem;font-weight:700}}
+.card .sub{{font-size:.75rem;color:var(--muted);margin-top:4px}}
 
-.metric {{
-    font-size:28px;
-    font-weight:bold;
-}}
+/* Two-column section */
+.two-col{{display:grid;grid-template-columns:1fr 1fr;gap:20px}}
+@media(max-width:768px){{.two-col{{grid-template-columns:1fr}}}}
 
-.low {{ color:#2ecc71; }}
-.medium {{ color:#f39c12; }}
-.high {{ color:#e74c3c; }}
+/* Panel */
+.panel{{background:var(--surface);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);border:1px solid rgba(255,255,255,.05)}}
+.panel h2{{font-size:1rem;font-weight:600;margin-bottom:16px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}}
 
-.section {{
-    background:white;
-    margin-top:20px;
-    padding:20px;
-    border-radius:8px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.1);
-}}
+/* Decision banner */
+.decision{{border-radius:var(--radius);padding:16px 24px;font-size:1rem;font-weight:600;margin-top:4px}}
+.decision-LOW{{background:rgba(46,204,113,.1);border-left:4px solid #2ecc71;color:#2ecc71}}
+.decision-MEDIUM{{background:rgba(243,156,18,.1);border-left:4px solid #f39c12;color:#f39c12}}
+.decision-HIGH{{background:rgba(231,76,60,.1);border-left:4px solid #e74c3c;color:#e74c3c}}
 
-.decision {{
-    font-size:20px;
-    font-weight:bold;
-}}
-.links {{
-    margin-top:15px;
-    text-align: center
-}}
+/* Issue tables */
+.issue-table{{width:100%;border-collapse:collapse;font-size:.85rem}}
+.issue-table th{{background:var(--surface2);color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.7px;padding:10px 12px;text-align:left}}
+.issue-table td{{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:top}}
+.issue-table tr:last-child td{{border-bottom:none}}
+.issue-table tr:hover td{{background:rgba(255,255,255,.03)}}
 
-.btn {{
-    display:inline-block;
-    padding:10px 16px;
-    margin-right:10px;
-    border-radius:6px;
-    text-decoration:none;
-    font-weight:bold;
-    color:white;
-    transition:0.2s;
-}}
+/* Tabs */
+.tab-bar{{display:flex;gap:4px;margin-bottom:16px;background:var(--surface2);border-radius:8px;padding:4px}}
+.tab{{flex:1;padding:8px;border:none;background:transparent;color:var(--muted);cursor:pointer;border-radius:6px;font-size:.85rem;font-weight:500;transition:.2s}}
+.tab.active{{background:var(--accent);color:white}}
 
-.btn-sonar {{
-    background:#4CAF50;
-}}
+/* Links bar */
+.links{{display:flex;gap:12px;flex-wrap:wrap}}
+.btn{{padding:10px 18px;border-radius:8px;font-weight:600;font-size:.85rem;transition:.15s;display:inline-flex;align-items:center;gap:6px}}
+.btn:hover{{opacity:.85;transform:translateY(-1px)}}
+.btn-green{{background:#27ae60;color:white}}
+.btn-blue{{background:#2980b9;color:white}}
+.btn-dark{{background:#2c3e50;color:white}}
 
-.btn-app {{
-    background:#3498db;
-}}
-
-.btn-repo {{
-    background:#2c3e50;
-}}
-
-.btn:hover {{
-    opacity:0.85;
-    transform:scale(1.05);
-}}
-
-/* Trend chart styling */
-#riskChart {{
-    width:100%;
-    max-width:900px;
-    height:400px;
-    margin:auto;
-    display:block;
-}}
-
-/* Gauge container */
-#gaugeContainer {{
-    width:260px;
-    margin:auto;
-    position:relative;
-}}
-
-/* Gauge canvas */
-#riskGauge {{
-    width:260px;
-    height:130px;
-}}
+/* Gauge */
+#gaugeWrap{{position:relative;width:220px;margin:auto}}
+#gaugeScore{{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:2.4rem;font-weight:700}}
 </style>
 </head>
-
 <body>
+<div class="wrap">
 
-<div class="container">
-
+<!-- HEADER -->
 <div class="header">
-<h1>Security Report Summary Dashboard</h1>
-<p><b>Project:</b> SecureApp</p>
-<p><b>Generated:</b> {datetime.now(IST).strftime("%d-%m-%Y %H:%M:%S")}</p>
+  <div>
+    <h1>🛡️ DevSecOps Security Dashboard</h1>
+    <div class="meta">Project: <b>{PROJECT_KEY}</b> &nbsp;|&nbsp; Generated: {datetime.now(IST).strftime("%d %b %Y, %H:%M:%S IST")}</div>
+    <div class="meta" style="margin-top:4px">Trend: <b>{trend}</b></div>
+  </div>
+  <div>
+    <div class="risk-pill risk-{level}">{level} RISK</div>
+  </div>
 </div>
 
-<div class="section">
-<h2 style="text-align:center;">Current Security Risk</h2>
+<!-- DECISION BANNER -->
+<div class="decision decision-{level}">⚡ {decision}</div>
 
-<div id="gaugeContainer"">
-<canvas id="riskGauge"></canvas>
-
-<div id="gaugeScore"
-style="
-position:absolute;
-top:65%;
-left:50%;
-transform:translate(-50%,-50%);
-font-size:32px;
-font-weight:bold;
-">
-{risk_score}
-</div>
-
-</div>
-
-<p style="text-align:center;font-weight:bold;margin-top:10px;">
-Risk Level: <span class="{level.lower()}">{level}</span>
-</p>
-
-</div>
-
-<div class="links">
-
-<a class="btn btn-sonar" href="{SONAR_DASHBOARD}" target="_blank">
-View SonarQube Report
-</a>
-
-<a class="btn btn-app" href="{RUNNING_APP}" target="_blank">
-Open Running Application
-</a>
-
-<a class="btn btn-repo" href="{PROJECT_REPO}" target="_blank">
-View GitHub Repository
-</a>
-
-</div>
-
+<!-- METRIC CARDS -->
 <div class="cards">
-
-<div class="card">
-<h3>Bugs</h3>
-<div class="metric">{bugs}</div>
+  <div class="card">
+    <div class="label">Bugs</div>
+    <div class="value" style="color:{'#e74c3c' if bugs>0 else '#2ecc71'}">{bugs}</div>
+    <div class="sub">weight ×{bugs_weight}</div>
+  </div>
+  <div class="card">
+    <div class="label">Vulnerabilities</div>
+    <div class="value" style="color:{'#e74c3c' if vulns>0 else '#2ecc71'}">{vulns}</div>
+    <div class="sub">weight ×{vulns_weight}</div>
+  </div>
+  <div class="card">
+    <div class="label">Hotspots</div>
+    <div class="value" style="color:{'#f39c12' if hotspots>0 else '#2ecc71'}">{hotspots}</div>
+    <div class="sub">weight ×{hotspots_weight}</div>
+  </div>
+  <div class="card">
+    <div class="label">Risk Score</div>
+    <div class="value" style="color:{gauge_color(risk_score)}">{risk_score}</div>
+    <div class="sub">computed</div>
+  </div>
+  <div class="card">
+    <div class="label">Code Smells</div>
+    <div class="value" style="color:var(--muted)">{code_smells}</div>
+    <div class="sub">maintainability</div>
+  </div>
+  <div class="card">
+    <div class="label">Coverage</div>
+    <div class="value" style="color:{'#2ecc71' if coverage>=70 else '#f39c12'}">{coverage:.1f}%</div>
+    <div class="sub">test coverage</div>
+  </div>
+  <div class="card">
+    <div class="label">Duplication</div>
+    <div class="value" style="color:{'#e74c3c' if duplication>10 else '#2ecc71'}">{duplication:.1f}%</div>
+    <div class="sub">duplicated lines</div>
+  </div>
+  <div class="card">
+    <div class="label">Lines of Code</div>
+    <div class="value" style="font-size:1.5rem">{ncloc:,}</div>
+    <div class="sub">ncloc</div>
+  </div>
 </div>
 
-<div class="card">
-<h3>Vulnerabilities</h3>
-<div class="metric">{vulns}</div>
+<!-- GAUGE + TREND CHART -->
+<div class="two-col">
+  <div class="panel">
+    <h2>Risk Gauge</h2>
+    <div id="gaugeWrap">
+      <canvas id="riskGauge" height="130"></canvas>
+      <div id="gaugeScore" style="color:{gauge_color(risk_score)}">{risk_score}</div>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Risk Trend</h2>
+    <canvas id="riskChart" height="160"></canvas>
+  </div>
 </div>
 
-<div class="card">
-<h3>Security Hotspots</h3>
-<div class="metric">{hotspots}</div>
+<!-- ISSUE DETAILS TABS -->
+<div class="panel">
+  <h2>Issue Details</h2>
+  <div class="tab-bar">
+    <button class="tab active" onclick="showTab('bugs')">🐛 Bugs ({bugs})</button>
+    <button class="tab" onclick="showTab('vulns')">🔓 Vulnerabilities ({vulns})</button>
+    <button class="tab" onclick="showTab('hotspots')">🔥 Hotspots ({hotspots})</button>
+  </div>
+
+  <div id="tab-bugs">
+    <table class="issue-table">
+      <thead><tr><th>Severity</th><th>File</th><th>Line</th><th>Message</th></tr></thead>
+      <tbody>{issue_rows(bug_issues, 'BUG')}</tbody>
+    </table>
+  </div>
+  <div id="tab-vulns" style="display:none">
+    <table class="issue-table">
+      <thead><tr><th>Severity</th><th>File</th><th>Line</th><th>Message</th></tr></thead>
+      <tbody>{issue_rows(vuln_issues, 'VULNERABILITY')}</tbody>
+    </table>
+  </div>
+  <div id="tab-hotspots" style="display:none">
+    <table class="issue-table">
+      <thead><tr><th>Priority</th><th>File</th><th>Line</th><th>Message</th></tr></thead>
+      <tbody>{hotspot_rows(hotspot_issues)}</tbody>
+    </table>
+  </div>
 </div>
 
-<div class="card">
-<h3>Risk Score</h3>
-<div class="metric {level.lower()}">{risk_score}</div>
-</div>
-
-</div>
-
-<div class="section">
-<h2>Risk Evaluation</h2>
-
-<p><b>Risk Level:</b>
-<span class="{level.lower()}">{level}</span>
-</p>
-
-<p class="decision">{decision}</p>
-
-<h3>Incident Summary</h3>
-<p>{summary}</p>
-</div>
-
-<div class="section">
-<h2 style="text-align:center;">Risk Trend</h2>
-
-<div style="max-width:900px;margin:auto;">
-<canvas id="riskChart"></canvas>
-</div>
-
+<!-- LINKS -->
+<div class="links">
+  <a class="btn btn-green" href="{SONAR_DASH}" target="_blank">📊 SonarCloud Report</a>
+  <a class="btn btn-blue" href="{RUNNING_APP}" target="_blank">🚀 Running App</a>
+  <a class="btn btn-dark" href="{PROJECT_REPO}" target="_blank">📁 GitHub Repo</a>
 </div>
 
 </div>
 
 <script>
-
-const riskValue = {risk_score};
-
-let gaugeColor = "#2ecc71";
-let mediumColor = "#f39c12";
-let highColor = "#e74c3c";
-
-if (riskValue > 5) {{
-    gaugeColor = highColor;
-}}
-else if (riskValue > 2) {{
-    gaugeColor = mediumColor;
-}}
-else {{
-    gaugeColor = "#2ecc71";
+/* ── Tab switching ── */
+function showTab(name) {{
+  ['bugs','vulns','hotspots'].forEach(t => {{
+    document.getElementById('tab-'+t).style.display = t===name ? '' : 'none';
+  }});
+  document.querySelectorAll('.tab').forEach((btn,i) => {{
+    btn.classList.toggle('active', ['bugs','vulns','hotspots'][i] === name);
+  }});
 }}
 
-/* ---------------- RISK TREND GRAPH ---------------- */
-
-const trendCtx = document.getElementById('riskChart');
-
-new Chart(trendCtx, {{
-    type: 'line',
-    data: {{
-        labels: {history_labels},
-        datasets: [{{
-            label: 'Risk Score',
-            data: {history_scores},
-            borderColor: '#3498db',
-            backgroundColor: 'rgba(52,152,219,0.2)',
-            tension: 0.3,
-            fill: true
-        }}]
-    }},
-    options: {{
-        responsive: true,
-        scales: {{
-            y: {{
-                beginAtZero: true
-            }}
-        }}
-    }}
+/* ── Gauge ── */
+new Chart(document.getElementById('riskGauge'), {{
+  type:'doughnut',
+  data:{{
+    datasets:[{{
+      data:[{risk_score}, {max(0, 10-risk_score)}],
+      backgroundColor:['{gauge_color(risk_score)}','#22263a'],
+      borderWidth:0
+    }}]
+  }},
+  options:{{circumference:180,rotation:270,cutout:'75%',plugins:{{legend:{{display:false}},tooltip:{{enabled:false}}}}}}
 }});
 
-/* ---------------- RISK GAUGE ---------------- */
-
-const gaugeCtx = document.getElementById('riskGauge');
-
-new Chart(gaugeCtx, {{
-    type: 'doughnut',
-    data: {{
-        labels: ["Risk","Remaining"],
-        datasets: [{{
-            data: [riskValue, 10-riskValue],
-            backgroundColor: [gaugeColor,"#ecf0f1"],
-            borderWidth: 0
-        }}]
-    }},
-    options: {{
-        circumference: 180,
-        rotation: 270,
-        cutout: "75%",
-        plugins: {{
-            legend: {{
-                display: false
-            }}
-        }}
+/* ── Trend line ── */
+new Chart(document.getElementById('riskChart'), {{
+  type:'line',
+  data:{{
+    labels:{json.dumps(history_labels)},
+    datasets:[{{
+      label:'Risk Score',
+      data:{json.dumps(history_scores)},
+      borderColor:'#4f8ef7',
+      backgroundColor:'rgba(79,142,247,.15)',
+      tension:.35,fill:true,
+      pointBackgroundColor:'#4f8ef7',
+      pointRadius:4
+    }}]
+  }},
+  options:{{
+    responsive:true,
+    plugins:{{legend:{{labels:{{color:'#8b90a0'}}}}}},
+    scales:{{
+      x:{{ticks:{{color:'#8b90a0'}},grid:{{color:'rgba(255,255,255,.05)'}}}},
+      y:{{beginAtZero:true,ticks:{{color:'#8b90a0'}},grid:{{color:'rgba(255,255,255,.05)'}},suggestedMax:10}}
     }}
+  }}
 }});
-
 </script>
-
 </body>
-</html>
-"""
+</html>"""
 
-print("SUMMARY:", summary)
 with open("reports/security-report.html", "w") as f:
     f.write(html)
+
+print(f"Report written → reports/security-report.html")
 sys.exit(exit_code)
