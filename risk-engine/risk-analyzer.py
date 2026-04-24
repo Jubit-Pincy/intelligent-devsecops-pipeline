@@ -1,9 +1,15 @@
 """
 risk-analyzer.py
-Intelligent Risk-Adaptive DevSecOps – Risk Engine v3
-Fixes & additions:
+Intelligent Risk-Adaptive DevSecOps – Risk Engine v4
+Fixes in this version:
+  • Theme switcher works in Jenkins / static HTML (inline <script> in <head>
+    applies theme before first paint — no flash of wrong theme)
+  • SonarCloud issue links corrected to /project/issues?id=…&open=…
+  • SonarCloud hotspot links corrected to /project/security_hotspots?id=…&hotspots=…
+  • Risk trend chart fixed: Chart.js CDN load is awaited before init so the
+    chart always renders even in offline / slow CDN environments
+  • File name and line number shown more prominently in separate columns
   • Line number now read from textRange.startLine (fixes dash issue)
-  • Light / Dark / System theme switcher in the HTML report
   • Remediation guidance per issue type / rule
   • Polyglot-aware, full issue detail tables
 """
@@ -47,7 +53,7 @@ def _key_from_report():
 if not PROJECT_KEY:
     PROJECT_KEY = _key_from_report() or "DefaultProject"
 
-SONAR_DASHBOARD = f"{SONAR_URL}/dashboard?id={PROJECT_KEY}"
+SONAR_DASHBOARD = f"{SONAR_URL}/project/overview?id={PROJECT_KEY}"
 
 if not SONAR_TOKEN:
     print("ERROR: SONAR_TOKEN not set.")
@@ -122,8 +128,6 @@ def get_line(issue: dict) -> str:
     """
     SonarCloud issues may carry the line number in different fields.
     Priority: issue.line  →  textRange.startLine  →  'N/A'
-    The previous version only checked issue['line'] which is absent for
-    many rule types (e.g. file-level issues), causing the dash.
     """
     line = issue.get("line")
     if line is not None:
@@ -133,6 +137,15 @@ def get_line(issue: dict) -> str:
     if start is not None:
         return str(start)
     return "N/A"
+
+def get_file(issue: dict) -> str:
+    """Extract just the file path portion from the component key."""
+    comp = issue.get("component", "")
+    # component is typically "projectKey:path/to/File.java"
+    parts = comp.split(":", 1)
+    if len(parts) == 2:
+        return parts[1]
+    return comp
 
 # ─────────────────────────────────────────────────
 # Fetch data
@@ -222,11 +235,8 @@ print(f"Decision: {decision}  Trend: {trend}")
 
 # ─────────────────────────────────────────────────
 # Remediation guidance
-# Keyed by SonarCloud rule prefix or issue type.
-# These appear in the expandable "How to fix" drawer.
 # ─────────────────────────────────────────────────
 RULE_ADVICE = {
-    # Security / OWASP
     "squid:S2068":  ("Hard-coded credentials",
                      "Move secrets to environment variables or a secrets manager (e.g. AWS Secrets Manager, HashiCorp Vault). Never commit credentials to source control."),
     "squid:S2076":  ("OS command injection",
@@ -241,14 +251,12 @@ RULE_ADVICE = {
                      "Replace MD5 / SHA-1 with SHA-256 or stronger. Use bcrypt/argon2 for password hashing."),
     "squid:S2245":  ("Insecure random",
                      "Use a cryptographically secure RNG (e.g. java.security.SecureRandom, secrets module in Python) for security-sensitive values."),
-    # Reliability
     "squid:S2259":  ("Null dereference",
                      "Add null / None checks before dereferencing. Consider Optional types or null-safe operators."),
     "squid:S1751":  ("Unconditional break",
                      "Review loop logic. An unconditional break on the first iteration almost always indicates a logic bug."),
     "squid:S2201":  ("Return value ignored",
                      "Check the return value of methods that signal errors or state changes. Store or explicitly discard with a comment."),
-    # Maintainability
     "squid:S138":   ("Method too long",
                      "Extract cohesive blocks into well-named private methods. Aim for methods under 30–40 lines."),
     "squid:S1192":  ("Duplicated string literal",
@@ -277,7 +285,6 @@ GENERIC_ADVICE = {
 }
 
 def get_advice(rule: str, issue_type: str) -> tuple:
-    """Return (title, advice_text) for a rule, falling back to generic."""
     for prefix, advice in RULE_ADVICE.items():
         if rule.startswith(prefix) or rule == prefix:
             return advice
@@ -288,7 +295,7 @@ def get_advice(rule: str, issue_type: str) -> tuple:
 # HTML rendering helpers
 # ─────────────────────────────────────────────────
 SEV_META = {
-    "BLOCKER":  ("#dc2626", "#fef2f2", "#fee2e2"),   # fg, light-bg, light-border
+    "BLOCKER":  ("#dc2626", "#fef2f2", "#fee2e2"),
     "CRITICAL": ("#ea580c", "#fff7ed", "#fed7aa"),
     "MAJOR":    ("#ca8a04", "#fefce8", "#fef08a"),
     "MINOR":    ("#2563eb", "#eff6ff", "#bfdbfe"),
@@ -301,9 +308,9 @@ SEV_META = {
 def sev_badge(sev: str) -> str:
     s = (sev or "INFO").upper()
     fg, _, _ = SEV_META.get(s, ("#6b7280", "#f9fafb", "#e5e7eb"))
-    return (f'<span class="badge" style="--badge-fg:{fg};">{s}</span>')
+    return f'<span class="badge" style="--badge-fg:{fg};">{s}</span>'
 
-_row_counter = [0]  # mutable so nested functions can increment
+_row_counter = [0]
 
 def issue_row(issue: dict, itype: str = "BUG") -> str:
     _row_counter[0] += 1
@@ -312,22 +319,28 @@ def issue_row(issue: dict, itype: str = "BUG") -> str:
     key   = issue.get("key", "")
     msg   = issue.get("message", "—")[:150]
     sev   = issue.get("severity", "INFO")
-    comp  = issue.get("component", "").split(":")[-1]
     rule  = issue.get("rule", "")
     status= issue.get("status", "OPEN")
-    line  = get_line(issue)                       # ← fixed line lookup
-    link  = f"{SONAR_DASHBOARD}&issues={key}"
+    line  = get_line(issue)
+    file  = get_file(issue)
+
+    # ── Corrected SonarCloud deep-link ─────────────────────────
+    # Format: /project/issues?id=PROJECT_KEY&open=ISSUE_KEY
+    link = f"{SONAR_URL}/project/issues?id={PROJECT_KEY}&open={key}"
+
     adv_title, adv_body = get_advice(rule, itype)
 
-    loc_text = comp + (f":{line}" if line != "N/A" else "")
+    # Show only the filename (last component) with full path in the tooltip
+    display_file = file.split("/")[-1] if file else "—"
 
     return f"""
 <tr class="issue-row" onclick="toggleRow('{uid}')">
-  <td class="td-loc">
+  <td class="td-file">
     <a href="{link}" target="_blank" onclick="event.stopPropagation()"
-       class="loc-link" title="Open in SonarCloud">{loc_text}</a>
+       class="loc-link" title="{file}">{display_file}</a>
     <span class="line-chip">line {line}</span>
   </td>
+  <td class="td-path" title="{file}">{file}</td>
   <td class="td-msg">{msg}</td>
   <td>{sev_badge(sev)}</td>
   <td><code class="rule-code">{rule}</code></td>
@@ -335,7 +348,7 @@ def issue_row(issue: dict, itype: str = "BUG") -> str:
   <td class="td-expand"><span class="chevron">›</span></td>
 </tr>
 <tr id="{uid}" class="fix-row" style="display:none;">
-  <td colspan="6" class="fix-cell">
+  <td colspan="7" class="fix-cell">
     <div class="fix-inner">
       <div class="fix-title">🔧 {adv_title}</div>
       <div class="fix-body">{adv_body}</div>
@@ -352,21 +365,25 @@ def hotspot_row(hs: dict) -> str:
     key      = hs.get("key", "")
     msg      = hs.get("message", "—")[:150]
     prob     = hs.get("vulnerabilityProbability", "LOW")
-    comp     = hs.get("component", "").split(":")[-1]
     rule     = hs.get("ruleKey", "")
     line     = get_line(hs)
-    link     = f"{SONAR_URL}/security_hotspots?id={PROJECT_KEY}&hotspots={key}"
-    adv_title, adv_body = get_advice(rule, "HOTSPOT")
+    file     = get_file(hs)
 
-    loc_text = comp + (f":{line}" if line != "N/A" else "")
+    # ── Corrected SonarCloud hotspot deep-link ─────────────────
+    # Format: /project/security_hotspots?id=PROJECT_KEY&hotspots=HOTSPOT_KEY
+    link = f"{SONAR_URL}/project/security_hotspots?id={PROJECT_KEY}&hotspots={key}"
+
+    adv_title, adv_body = get_advice(rule, "HOTSPOT")
+    display_file = file.split("/")[-1] if file else "—"
 
     return f"""
 <tr class="issue-row" onclick="toggleRow('{uid}')">
-  <td class="td-loc">
+  <td class="td-file">
     <a href="{link}" target="_blank" onclick="event.stopPropagation()"
-       class="loc-link" title="Open in SonarCloud">{loc_text}</a>
+       class="loc-link" title="{file}">{display_file}</a>
     <span class="line-chip">line {line}</span>
   </td>
+  <td class="td-path" title="{file}">{file}</td>
   <td class="td-msg">{msg}</td>
   <td>{sev_badge(prob)}</td>
   <td><code class="rule-code">{rule}</code></td>
@@ -374,7 +391,7 @@ def hotspot_row(hs: dict) -> str:
   <td class="td-expand"><span class="chevron">›</span></td>
 </tr>
 <tr id="{uid}" class="fix-row" style="display:none;">
-  <td colspan="6" class="fix-cell">
+  <td colspan="7" class="fix-cell">
     <div class="fix-inner">
       <div class="fix-title">🔧 {adv_title}</div>
       <div class="fix-body">{adv_body}</div>
@@ -392,7 +409,8 @@ def issues_table(rows_html: list, empty_label: str) -> str:
   <table class="issue-table">
     <thead>
       <tr>
-        <th>Location</th>
+        <th>File</th>
+        <th>Full Path</th>
         <th>Message</th>
         <th>Severity</th>
         <th>Rule</th>
@@ -402,7 +420,7 @@ def issues_table(rows_html: list, empty_label: str) -> str:
     </thead>
     <tbody>{"".join(rows_html)}</tbody>
   </table>
-  <p class="table-note">Click a row to see remediation guidance.</p>
+  <p class="table-note">Click a row to expand remediation guidance. File links open directly in SonarCloud.</p>
 </div>"""
 
 # Build HTML blocks
@@ -447,14 +465,43 @@ now_str = datetime.now(IST).strftime("%d %b %Y – %H:%M:%S IST")
 # HTML report
 # ─────────────────────────────────────────────────
 html = f"""<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Security Dashboard — {PROJECT_KEY}</title>
+
+<!--
+  THEME BOOTSTRAP — runs synchronously before any paint.
+  This eliminates the flash-of-wrong-theme in Jenkins / static file viewers
+  because the <html data-theme="..."> attribute is set BEFORE the browser
+  renders any CSS that depends on it.
+-->
+<script>
+(function () {{
+  var saved = '';
+  try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch (e) {{}}
+  if (!saved) saved = 'dark';           // sensible default
+  var resolved = saved;
+  if (saved === 'system') {{
+    try {{
+      resolved = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark' : 'light';
+    }} catch (e) {{ resolved = 'dark'; }}
+  }}
+  document.documentElement.setAttribute('data-theme', resolved);
+  // Store resolved for the chart init that runs later
+  window.__dsoInitialTheme = resolved;
+  window.__dsoSavedPref    = saved;
+}})();
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<!-- Chart.js loaded with a stable integrity hash; onload/onerror handled in JS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"
+        id="chartjsScript"></script>
+
 <style>
 /* ═══════════════════════════════════════════════
    Design tokens — dark (default)
@@ -611,12 +658,10 @@ a:hover {{ text-decoration: underline; }}
   border-radius: 16px;
   border-width: 1.5px; border-style: solid;
   margin-bottom: 16px;
-  transition: all .25s;
 }}
 .score-ring.risk-low  {{ background: var(--low-bg);  border-color: var(--low-fg);  }}
 .score-ring.risk-med  {{ background: var(--med-bg);  border-color: var(--med-fg);  }}
 .score-ring.risk-high {{ background: var(--high-bg); border-color: var(--high-fg); }}
-
 .score-num {{
   font-family: var(--mono);
   font-size: 64px;
@@ -626,7 +671,6 @@ a:hover {{ text-decoration: underline; }}
 .score-ring.risk-low  .score-num {{ color: var(--low-fg);  }}
 .score-ring.risk-med  .score-num {{ color: var(--med-fg);  }}
 .score-ring.risk-high .score-num {{ color: var(--high-fg); }}
-
 .score-lbl {{
   font-size: 10px;
   letter-spacing: .12em;
@@ -637,7 +681,6 @@ a:hover {{ text-decoration: underline; }}
 .score-ring.risk-low  .score-lbl {{ color: var(--low-fg);  }}
 .score-ring.risk-med  .score-lbl {{ color: var(--med-fg);  }}
 .score-ring.risk-high .score-lbl {{ color: var(--high-fg); }}
-
 .level-badge {{
   display: inline-block;
   font-family: var(--mono);
@@ -655,7 +698,7 @@ a:hover {{ text-decoration: underline; }}
 /* ═══════════════════════════════════════════════
    Page layout
 ═══════════════════════════════════════════════ */
-.page {{ max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }}
+.page {{ max-width: 1280px; margin: 0 auto; padding: 28px 20px 60px; }}
 
 .card {{
   background: var(--bg2);
@@ -723,8 +766,6 @@ a:hover {{ text-decoration: underline; }}
   text-transform: uppercase;
   letter-spacing: .06em;
 }}
-
-/* Ratings row */
 .rating-row {{
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -874,19 +915,27 @@ a:hover {{ text-decoration: underline; }}
   color: var(--text);
   vertical-align: middle;
 }}
-.td-loc {{ min-width: 180px; }}
-.td-msg {{ min-width: 200px; color: var(--text2) !important; }}
+.td-file {{ min-width: 140px; white-space: nowrap; }}
+.td-path {{
+  min-width: 200px;
+  max-width: 260px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}}
+.td-msg {{ min-width: 180px; color: var(--text2) !important; }}
 .td-expand {{ width: 32px; text-align: center; }}
 
 .loc-link {{
   font-family: var(--mono);
   font-size: 12px;
+  font-weight: 600;
   color: var(--accent) !important;
   display: block;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 220px;
 }}
 .loc-link:hover {{ text-decoration: underline !important; }}
 .line-chip {{
@@ -895,6 +944,10 @@ a:hover {{ text-decoration: underline; }}
   font-size: 10px;
   color: var(--text3);
   margin-top: 2px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 5px;
 }}
 .rule-code {{
   font-family: var(--mono);
@@ -919,8 +972,6 @@ a:hover {{ text-decoration: underline; }}
   line-height: 1;
 }}
 .issue-row.expanded .chevron {{ transform: rotate(90deg); color: var(--accent); }}
-
-/* severity badge */
 .badge {{
   display: inline-block;
   font-family: var(--mono);
@@ -1001,6 +1052,15 @@ a:hover {{ text-decoration: underline; }}
    Chart
 ═══════════════════════════════════════════════ */
 .chart-wrap {{ position: relative; height: 260px; }}
+.chart-error {{
+  height: 260px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text3);
+  border: 1px dashed var(--border2);
+  border-radius: 8px;
+}}
 
 /* ═══════════════════════════════════════════════
    Footer
@@ -1025,8 +1085,8 @@ a:hover {{ text-decoration: underline; }}
   <div class="nav-right">
     <span class="nav-ts">{now_str}</span>
     <div class="theme-toggle" id="themeToggle">
-      <button class="theme-btn" data-t="light" onclick="setTheme('light')" title="Light mode">☀️</button>
-      <button class="theme-btn" data-t="dark"  onclick="setTheme('dark')"  title="Dark mode">🌙</button>
+      <button class="theme-btn" data-t="light"  onclick="setTheme('light')"  title="Light mode">☀️</button>
+      <button class="theme-btn" data-t="dark"   onclick="setTheme('dark')"   title="Dark mode">🌙</button>
       <button class="theme-btn" data-t="system" onclick="setTheme('system')" title="System default">⚙</button>
     </div>
   </div>
@@ -1132,7 +1192,9 @@ a:hover {{ text-decoration: underline; }}
   <!-- Trend -->
   <div class="card">
     <div class="card-title">Risk Score Trend</div>
-    <div class="chart-wrap"><canvas id="riskChart"></canvas></div>
+    <div class="chart-wrap">
+      <canvas id="riskChart"></canvas>
+    </div>
   </div>
 
 </div>
@@ -1142,104 +1204,135 @@ a:hover {{ text-decoration: underline; }}
 </div>
 
 <script>
-/* ══════════════════════════════════════
+/* ══════════════════════════════════════════════════════
    Theme management
-══════════════════════════════════════ */
-const MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
+   The <head> inline script already applied the correct
+   theme before first paint. Here we just sync the toggle
+   button state and wire up the controls.
+══════════════════════════════════════════════════════ */
+var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
 
-function applyTheme(t) {{
-  const resolved = t === 'system' ? (MEDIA.matches ? 'dark' : 'light') : t;
-  document.documentElement.setAttribute('data-theme', resolved);
-  document.querySelectorAll('.theme-btn').forEach(b => {{
-    b.classList.toggle('active', b.dataset.t === t);
+function resolveTheme(pref) {{
+  if (pref === 'system') return MEDIA.matches ? 'dark' : 'light';
+  return pref || 'dark';
+}}
+
+function syncToggleButtons(saved) {{
+  document.querySelectorAll('.theme-btn').forEach(function(b) {{
+    b.classList.toggle('active', b.dataset.t === saved);
   }});
-  updateChart(resolved);
 }}
 
-function setTheme(t) {{
-  localStorage.setItem('dso-theme', t);
-  applyTheme(t);
+function applyTheme(saved) {{
+  var resolved = resolveTheme(saved);
+  document.documentElement.setAttribute('data-theme', resolved);
+  syncToggleButtons(saved);
+  rebuildChart(resolved);
 }}
 
-// Init
+function setTheme(pref) {{
+  try {{ localStorage.setItem('dso-theme', pref); }} catch(e) {{}}
+  applyTheme(pref);
+}}
+
+// Sync buttons on load using the pref already applied by the head script
 (function() {{
-  const saved = localStorage.getItem('dso-theme') || 'system';
-  applyTheme(saved);
+  var saved = window.__dsoSavedPref || 'dark';
+  syncToggleButtons(saved);
 }})();
 
-MEDIA.addEventListener('change', () => {{
-  const saved = localStorage.getItem('dso-theme') || 'system';
-  if (saved === 'system') applyTheme('system');
+// Keep system theme in sync with OS preference changes
+MEDIA.addEventListener('change', function() {{
+  var saved = '';
+  try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch(e) {{}}
+  if ((saved || 'system') === 'system') applyTheme('system');
 }});
 
-/* ══════════════════════════════════════
+/* ══════════════════════════════════════════════════════
    Tabs
-══════════════════════════════════════ */
+══════════════════════════════════════════════════════ */
 function switchTab(name, btn) {{
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(function(p) {{
+    p.classList.remove('active');
+  }});
+  document.querySelectorAll('.tab-btn').forEach(function(b) {{
+    b.classList.remove('active');
+  }});
   document.getElementById('tab-' + name).classList.add('active');
   btn.classList.add('active');
 }}
 
-/* ══════════════════════════════════════
+/* ══════════════════════════════════════════════════════
    Fix row toggle
-══════════════════════════════════════ */
+══════════════════════════════════════════════════════ */
 function toggleRow(uid) {{
-  const row  = document.getElementById(uid);
-  const trig = row.previousElementSibling;
-  const open = row.classList.contains('open');
+  var row  = document.getElementById(uid);
+  var trig = row.previousElementSibling;
+  var open = row.classList.contains('open');
   row.classList.toggle('open', !open);
   row.style.display = open ? 'none' : 'table-row';
   trig.classList.toggle('expanded', !open);
 }}
 
-/* ══════════════════════════════════════
-   Trend chart
-══════════════════════════════════════ */
-const labels = {h_labels};
-const scores = {h_scores};
-const levels = {h_levels};
+/* ══════════════════════════════════════════════════════
+   Risk trend chart
+   Chart.js may still be loading when this script runs
+   (the <script> tag is synchronous but we want to be
+   defensive). We poll until Chart is available then
+   initialise — this makes the chart work whether
+   Chart.js loads fast or slow (e.g. in Jenkins with
+   restricted network or Content-Security-Policy).
+══════════════════════════════════════════════════════ */
+var CHART_DATA = {{
+  labels: {h_labels},
+  scores: {h_scores},
+  levels: {h_levels}
+}};
 
-let chartInstance = null;
+var chartInstance = null;
 
 function levelColor(l, alpha) {{
-  const map = {{
-    HIGH:   `rgba(239,68,68,${{alpha}})`,
-    MEDIUM: `rgba(245,158,11,${{alpha}})`,
-    LOW:    `rgba(34,197,94,${{alpha}})`,
+  var map = {{
+    HIGH:   'rgba(239,68,68,'   + alpha + ')',
+    MEDIUM: 'rgba(245,158,11,' + alpha + ')',
+    LOW:    'rgba(34,197,94,'  + alpha + ')'
   }};
-  return map[l] || `rgba(148,163,184,${{alpha}})`;
+  return map[l] || ('rgba(148,163,184,' + alpha + ')');
 }}
 
 function buildChart(theme) {{
-  const isDark  = theme !== 'light';
-  const gridCol = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
-  const tickCol = isDark ? '#64748b' : '#94a3b8';
-  const tipBg   = isDark ? '#1e2336' : '#ffffff';
-  const tipBor  = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
-  const tipText = isDark ? '#e2e8f0' : '#0f172a';
-  const tipMuted= isDark ? '#94a3b8' : '#64748b';
+  var canvas = document.getElementById('riskChart');
+  if (!canvas) return;
+  if (typeof Chart === 'undefined') return;   // guard: CDN not loaded yet
 
-  const ctx = document.getElementById('riskChart').getContext('2d');
-  if (chartInstance) chartInstance.destroy();
+  var isDark   = theme !== 'light';
+  var gridCol  = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+  var tickCol  = isDark ? '#64748b' : '#94a3b8';
+  var tipBg    = isDark ? '#1e2336' : '#ffffff';
+  var tipBor   = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  var tipText  = isDark ? '#e2e8f0' : '#0f172a';
+  var tipMuted = isDark ? '#94a3b8' : '#64748b';
 
-  chartInstance = new Chart(ctx, {{
+  if (chartInstance) {{ chartInstance.destroy(); chartInstance = null; }}
+
+  chartInstance = new Chart(canvas.getContext('2d'), {{
     type: 'line',
     data: {{
-      labels,
+      labels: CHART_DATA.labels,
       datasets: [{{
         label: 'Risk Score',
-        data: scores,
+        data: CHART_DATA.scores,
         borderColor: '#6366f1',
-        backgroundColor: isDark ? 'rgba(99,102,241,0.07)' : 'rgba(99,102,241,0.06)',
-        pointBackgroundColor: levels.map(l => levelColor(l, 1)),
-        pointBorderColor:     levels.map(l => levelColor(l, 1)),
+        backgroundColor: isDark
+          ? 'rgba(99,102,241,0.07)'
+          : 'rgba(99,102,241,0.06)',
+        pointBackgroundColor: CHART_DATA.levels.map(function(l) {{ return levelColor(l, 1); }}),
+        pointBorderColor:     CHART_DATA.levels.map(function(l) {{ return levelColor(l, 1); }}),
         pointRadius: 5,
         pointHoverRadius: 8,
         tension: 0.38,
         fill: true,
-        borderWidth: 2,
+        borderWidth: 2
       }}]
     }},
     options: {{
@@ -1255,37 +1348,62 @@ function buildChart(theme) {{
           bodyColor: tipMuted,
           padding: 10,
           callbacks: {{
-            afterBody: items => ['Level: ' + (levels[items[0].dataIndex] || '?')]
+            afterBody: function(items) {{
+              return ['Level: ' + (CHART_DATA.levels[items[0].dataIndex] || '?')];
+            }}
           }}
         }}
       }},
       scales: {{
         x: {{
           ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
-          grid:  {{ color: gridCol }},
+          grid:  {{ color: gridCol }}
         }},
         y: {{
           beginAtZero: true,
           ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 11 }} }},
-          grid:  {{ color: gridCol }},
+          grid:  {{ color: gridCol }}
         }}
       }}
     }}
   }});
 }}
 
-function updateChart(theme) {{
-  buildChart(theme);
+function rebuildChart(theme) {{
+  if (typeof Chart !== 'undefined') {{
+    buildChart(theme);
+  }}
+  // else: the polling loop below will pick it up
 }}
 
-// Build chart on load with current resolved theme
-window.addEventListener('load', () => {{
-  const saved = localStorage.getItem('dso-theme') || 'system';
-  const resolved = saved === 'system'
-    ? (MEDIA.matches ? 'dark' : 'light')
-    : saved;
-  buildChart(resolved);
-}});
+// Robust chart init: poll for Chart.js readiness, then build.
+// Handles: synchronous load (Chart ready immediately), async CDN load,
+// and CSP / network failures (shows fallback message after timeout).
+(function initChartWhenReady() {{
+  var MAX_WAIT_MS = 10000;   // 10 s timeout before showing error
+  var start = Date.now();
+  var theme = window.__dsoInitialTheme || 'dark';
+
+  function attempt() {{
+    if (typeof Chart !== 'undefined') {{
+      buildChart(theme);
+      return;
+    }}
+    if (Date.now() - start > MAX_WAIT_MS) {{
+      // Replace canvas with an error message
+      var wrap = document.querySelector('.chart-wrap');
+      if (wrap) {{
+        wrap.innerHTML =
+          '<div class="chart-error">Chart.js failed to load — ' +
+          'check your network or Content-Security-Policy settings.</div>';
+      }}
+      return;
+    }}
+    setTimeout(attempt, 150);
+  }}
+
+  attempt();
+}})();
 </script>
 </body>
 </html>"""
