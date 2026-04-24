@@ -1,37 +1,36 @@
 """
 risk-analyzer.py
-Intelligent Risk-Adaptive DevSecOps – Risk Engine
-Features:
-  • Polyglot-aware (reads DETECTED_TYPES from env)
-  • Fetches individual issue details (bugs, vulns, hotspots) from SonarCloud
-  • Writes a rich, redesigned HTML security dashboard
+Intelligent Risk-Adaptive DevSecOps – Risk Engine v3
+Fixes & additions:
+  • Line number now read from textRange.startLine (fixes dash issue)
+  • Light / Dark / System theme switcher in the HTML report
+  • Remediation guidance per issue type / rule
+  • Polyglot-aware, full issue detail tables
 """
 
 from datetime import datetime, timezone, timedelta
 import os, sys, json, requests
 
-# ─────────────────────────────────────────
-# Configuration
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────
+# Config
+# ─────────────────────────────────────────────────
 IST = timezone(timedelta(hours=5, minutes=30))
 
-SONAR_URL   = os.getenv("SONAR_URL", "https://sonarcloud.io")
-SONAR_TOKEN = os.getenv("SONAR_TOKEN", "")
-PROJECT_KEY = os.getenv("PROJECT_KEY", "")
-SONAR_DASHBOARD = f"{SONAR_URL}/dashboard?id={PROJECT_KEY}"
-PROJECT_REPO    = os.getenv("GITHUB_REPO_URL",
-                            "https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline")
-RUNNING_APP     = os.getenv("RUNNING_APP_URL", "http://localhost:8081/")
-GITHUB_RUN_URL  = os.getenv("GITHUB_RUN_URL", "#")
+SONAR_URL      = os.getenv("SONAR_URL", "https://sonarcloud.io")
+SONAR_TOKEN    = os.getenv("SONAR_TOKEN", "")
+PROJECT_KEY    = os.getenv("PROJECT_KEY", "")
+PROJECT_REPO   = os.getenv("GITHUB_REPO_URL",
+                           "https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline")
+RUNNING_APP    = os.getenv("RUNNING_APP_URL", "http://localhost:8081/")
+GITHUB_RUN_URL = os.getenv("GITHUB_RUN_URL", "#")
 
-# Detected types comes as JSON array from GH Actions; fall back to env string
 _raw_types = os.getenv("DETECTED_TYPES", '["unknown"]')
 try:
     DETECTED_TYPES = json.loads(_raw_types)
 except Exception:
     DETECTED_TYPES = [_raw_types]
 
-# Try reading project key from report-task.txt (local Jenkins / CLI runs)
+# Fallback: read project key from report-task.txt (Jenkins / local CLI)
 def _key_from_report():
     for path in (
         ".sonarqube/out/.sonar/report-task.txt",
@@ -48,39 +47,34 @@ def _key_from_report():
 if not PROJECT_KEY:
     PROJECT_KEY = _key_from_report() or "DefaultProject"
 
+SONAR_DASHBOARD = f"{SONAR_URL}/dashboard?id={PROJECT_KEY}"
+
 if not SONAR_TOKEN:
     print("ERROR: SONAR_TOKEN not set.")
     sys.exit(1)
 
-
 def get_safe_int(env_var, default):
-    v = os.getenv(env_var, "")
     try:
-        return int(v)
+        return int(os.getenv(env_var, ""))
     except (ValueError, TypeError):
         return default
-
 
 WEIGHT_BUGS     = get_safe_int("WEIGHT_BUGS",     3)
 WEIGHT_VULNS    = get_safe_int("WEIGHT_VULNS",     5)
 WEIGHT_HOTSPOTS = get_safe_int("WEIGHT_HOTSPOTS",  2)
 
-
-# ─────────────────────────────────────────
-# Sonar API helpers
-# ─────────────────────────────────────────
 AUTH = (SONAR_TOKEN, "")
 
-
+# ─────────────────────────────────────────────────
+# SonarCloud API helpers
+# ─────────────────────────────────────────────────
 def sonar_get(endpoint, params=None):
     r = requests.get(f"{SONAR_URL}/api/{endpoint}",
                      params=params, auth=AUTH, timeout=30)
     r.raise_for_status()
     return r.json()
 
-
 def fetch_summary_metrics():
-    """Return {bugs, vulnerabilities, security_hotspots, code_smells, coverage, duplicated_lines_density}."""
     keys = ("bugs,vulnerabilities,security_hotspots,"
             "code_smells,coverage,duplicated_lines_density,"
             "reliability_rating,security_rating,sqale_rating")
@@ -89,838 +83,1098 @@ def fetch_summary_metrics():
         "metricKeys": keys,
         "branch": "main",
     })
-    measures = data.get("component", {}).get("measures", [])
     result = {}
-    for m in measures:
+    for m in data.get("component", {}).get("measures", []):
         try:
             result[m["metric"]] = float(m["value"])
         except (KeyError, ValueError):
             result[m["metric"]] = 0
     return result
 
-
-def fetch_issues(issue_types, severity=None, ps=20):
-    """
-    Fetch individual issues from SonarCloud.
-    issue_types: comma-separated string e.g. "BUG,VULNERABILITY"
-    Returns list of issue dicts.
-    """
-    params = {
-        "componentKeys": PROJECT_KEY,
-        "types": issue_types,
-        "ps": ps,
-        "p": 1,
-    }
-    if severity:
-        params["severities"] = severity
-
+def fetch_issues(issue_types, ps=10):
     try:
-        data = sonar_get("issues/search", params)
+        data = sonar_get("issues/search", {
+            "componentKeys": PROJECT_KEY,
+            "types": issue_types,
+            "ps": ps,
+            "p": 1,
+        })
         return data.get("issues", [])
     except Exception as e:
-        print(f"  Warning: could not fetch issues ({issue_types}): {e}")
+        print(f"  Warning: could not fetch {issue_types}: {e}")
         return []
 
-
-def fetch_hotspots(ps=20):
-    """Fetch security hotspots (separate API from issues)."""
-    params = {
-        "projectKey": PROJECT_KEY,
-        "ps": ps,
-        "p": 1,
-        "status": "TO_REVIEW",
-        "branch": "main",
-    }
+def fetch_hotspots(ps=10):
     try:
-        data = sonar_get("hotspots/search", params)
+        data = sonar_get("hotspots/search", {
+            "projectKey": PROJECT_KEY,
+            "ps": ps,
+            "p": 1,
+            "status": "TO_REVIEW",
+            "branch": "main",
+        })
         return data.get("hotspots", [])
     except Exception as e:
         print(f"  Warning: could not fetch hotspots: {e}")
         return []
 
+def get_line(issue: dict) -> str:
+    """
+    SonarCloud issues may carry the line number in different fields.
+    Priority: issue.line  →  textRange.startLine  →  'N/A'
+    The previous version only checked issue['line'] which is absent for
+    many rule types (e.g. file-level issues), causing the dash.
+    """
+    line = issue.get("line")
+    if line is not None:
+        return str(line)
+    text_range = issue.get("textRange") or {}
+    start = text_range.get("startLine")
+    if start is not None:
+        return str(start)
+    return "N/A"
 
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────
 # Fetch data
-# ─────────────────────────────────────────
-print("Fetching SonarCloud metrics …")
+# ─────────────────────────────────────────────────
+print("Fetching SonarCloud summary metrics …")
 metrics = fetch_summary_metrics()
 
-bugs_count     = int(metrics.get("bugs", 0))
-vulns_count    = int(metrics.get("vulnerabilities", 0))
-hotspots_count = int(metrics.get("security_hotspots", 0))
-smells_count   = int(metrics.get("code_smells", 0))
-coverage_pct   = round(metrics.get("coverage", 0), 1)
+bugs_count      = int(metrics.get("bugs", 0))
+vulns_count     = int(metrics.get("vulnerabilities", 0))
+hotspots_count  = int(metrics.get("security_hotspots", 0))
+smells_count    = int(metrics.get("code_smells", 0))
+coverage_pct    = round(metrics.get("coverage", 0), 1)
 duplication_pct = round(metrics.get("duplicated_lines_density", 0), 1)
 
-# Rating helpers (1=A … 5=E)
 def rating_label(val):
     return {1: "A", 2: "B", 3: "C", 4: "D", 5: "E"}.get(int(val), "?")
 
-reliability_rating = rating_label(metrics.get("reliability_rating", 1))
-security_rating    = rating_label(metrics.get("security_rating", 1))
+reliability_rating     = rating_label(metrics.get("reliability_rating", 1))
+security_rating        = rating_label(metrics.get("security_rating", 1))
 maintainability_rating = rating_label(metrics.get("sqale_rating", 1))
 
-print(f"  Bugs: {bugs_count}, Vulns: {vulns_count}, Hotspots: {hotspots_count}")
+print(f"  Bugs={bugs_count}, Vulns={vulns_count}, Hotspots={hotspots_count}")
 
 print("Fetching individual issue details …")
-bug_issues   = fetch_issues("BUG",          ps=10)
+bug_issues   = fetch_issues("BUG",           ps=10)
 vuln_issues  = fetch_issues("VULNERABILITY", ps=10)
 hotspot_list = fetch_hotspots(ps=10)
 
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────
 # Risk scoring
-# ─────────────────────────────────────────
-risk_score = (
-    bugs_count     * WEIGHT_BUGS     +
-    vulns_count    * WEIGHT_VULNS    +
-    hotspots_count * WEIGHT_HOTSPOTS
-)
+# ─────────────────────────────────────────────────
+risk_score = (bugs_count * WEIGHT_BUGS +
+              vulns_count * WEIGHT_VULNS +
+              hotspots_count * WEIGHT_HOTSPOTS)
 
-if risk_score <= 2:
-    level = "LOW"
-elif risk_score <= 5:
-    level = "MEDIUM"
-else:
-    level = "HIGH"
+level = "LOW" if risk_score <= 2 else "MEDIUM" if risk_score <= 5 else "HIGH"
 
-print(f"Weights → Bugs: {WEIGHT_BUGS}, Vulns: {WEIGHT_VULNS}, Hotspots: {WEIGHT_HOTSPOTS}")
-print(f"Risk Score: {risk_score}")
-print(f"Risk Level: {level}")
+print(f"Weights → Bugs:{WEIGHT_BUGS} Vulns:{WEIGHT_VULNS} Hotspots:{WEIGHT_HOTSPOTS}")
+print(f"Risk Score: {risk_score}  Level: {level}")
 
-# ─────────────────────────────────────────
-# History & Trend
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────
+# History & trend
+# ─────────────────────────────────────────────────
 os.makedirs("reports", exist_ok=True)
 history_file = "reports/history.json"
 history = []
-
 if os.path.exists(history_file):
     try:
         with open(history_file) as f:
             history = json.load(f)
     except Exception:
-        history = []
+        pass
 
-previous_score = history[-1]["risk_score"] if history else None
-
-if previous_score is None:
-    trend = "First Analysis Run"
-elif risk_score > previous_score:
-    trend = "↑ Risk Increased"
-elif risk_score < previous_score:
-    trend = "↓ Risk Reduced"
+prev = history[-1]["risk_score"] if history else None
+if prev is None:
+    trend = "First Run"
+elif risk_score > prev:
+    trend = "↑ Increasing"
+elif risk_score < prev:
+    trend = "↓ Decreasing"
 else:
-    trend = "→ Risk Stable"
+    trend = "→ Stable"
 
 history.append({
-    "timestamp": datetime.now(IST).strftime("%d-%m-%Y %H:%M:%S"),
+    "timestamp":  datetime.now(IST).strftime("%d-%m-%Y %H:%M"),
     "risk_score": risk_score,
-    "level": level,
+    "level":      level,
 })
-
 with open(history_file, "w") as f:
     json.dump(history, f, indent=2)
 
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────
 # Adaptive decision
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────
 exit_code = 0
 if level == "HIGH":
-    decision = "BUILD BLOCKED DUE TO HIGH RISK"
+    decision  = "BUILD BLOCKED — HIGH RISK"
     exit_code = 1
 elif level == "MEDIUM":
-    decision = ("MANUAL SECURITY REVIEW REQUIRED (Risk Increasing)"
-                if "Increased" in trend else "BUILD APPROVED WITH WARNINGS")
+    decision = ("MANUAL REVIEW REQUIRED — Risk Increasing"
+                if "Increasing" in trend else "APPROVED WITH WARNINGS")
 else:
-    decision = ("BUILD APPROVED – MONITOR RISK (Increasing Trend)"
-                if "Increased" in trend else "BUILD APPROVED")
+    decision = ("APPROVED — Monitor Trend"
+                if "Increasing" in trend else "APPROVED — All Clear")
 
-print(f"Governance Action: {decision}")
-print(f"Risk Trend: {trend}")
+print(f"Decision: {decision}  Trend: {trend}")
 
-
-# ─────────────────────────────────────────
-# HTML helpers
-# ─────────────────────────────────────────
-SEVERITY_COLOUR = {
-    "BLOCKER":  "#e74c3c",
-    "CRITICAL": "#e67e22",
-    "MAJOR":    "#f1c40f",
-    "MINOR":    "#3498db",
-    "INFO":     "#95a5a6",
+# ─────────────────────────────────────────────────
+# Remediation guidance
+# Keyed by SonarCloud rule prefix or issue type.
+# These appear in the expandable "How to fix" drawer.
+# ─────────────────────────────────────────────────
+RULE_ADVICE = {
+    # Security / OWASP
+    "squid:S2068":  ("Hard-coded credentials",
+                     "Move secrets to environment variables or a secrets manager (e.g. AWS Secrets Manager, HashiCorp Vault). Never commit credentials to source control."),
+    "squid:S2076":  ("OS command injection",
+                     "Validate and sanitise all user-supplied input before passing it to shell commands. Prefer safe APIs over shell execution."),
+    "squid:S2083":  ("Path traversal",
+                     "Canonicalise file paths and verify they remain within the intended directory before opening files."),
+    "squid:S3649":  ("SQL injection",
+                     "Use parameterised queries or an ORM. Never build SQL strings by concatenating user input."),
+    "squid:S5122":  ("CORS misconfiguration",
+                     "Restrict CORS to specific, trusted origins. Avoid wildcard '*' in production."),
+    "squid:S4790":  ("Weak hashing algorithm",
+                     "Replace MD5 / SHA-1 with SHA-256 or stronger. Use bcrypt/argon2 for password hashing."),
+    "squid:S2245":  ("Insecure random",
+                     "Use a cryptographically secure RNG (e.g. java.security.SecureRandom, secrets module in Python) for security-sensitive values."),
+    # Reliability
+    "squid:S2259":  ("Null dereference",
+                     "Add null / None checks before dereferencing. Consider Optional types or null-safe operators."),
+    "squid:S1751":  ("Unconditional break",
+                     "Review loop logic. An unconditional break on the first iteration almost always indicates a logic bug."),
+    "squid:S2201":  ("Return value ignored",
+                     "Check the return value of methods that signal errors or state changes. Store or explicitly discard with a comment."),
+    # Maintainability
+    "squid:S138":   ("Method too long",
+                     "Extract cohesive blocks into well-named private methods. Aim for methods under 30–40 lines."),
+    "squid:S1192":  ("Duplicated string literal",
+                     "Extract repeated string literals into named constants to reduce typo risk and ease future updates."),
 }
 
-def severity_badge(sev):
-    sev = (sev or "INFO").upper()
-    col = SEVERITY_COLOUR.get(sev, "#95a5a6")
-    return (f'<span style="background:{col};color:#fff;padding:2px 8px;'
-            f'border-radius:3px;font-size:11px;font-weight:700;">{sev}</span>')
+GENERIC_ADVICE = {
+    "BUG": (
+        "General bug remediation",
+        "Review the flagged code path carefully. Add unit tests that reproduce the issue, fix "
+        "the root cause (not just the symptom), and verify no related paths are affected. "
+        "Check SonarCloud's 'Why is this an issue?' section for rule-specific guidance."
+    ),
+    "VULNERABILITY": (
+        "General vulnerability remediation",
+        "Treat the issue as a security defect: assess exploitability, apply least-privilege "
+        "principles, validate all inputs, and follow the OWASP remediation guidance linked in "
+        "SonarCloud. Prioritise BLOCKER and CRITICAL severities first."
+    ),
+    "HOTSPOT": (
+        "Security hotspot review",
+        "Hotspots require manual review to determine exploitability. Read the flagged code in "
+        "context, assess whether the risk is real, then either fix it or mark it 'Safe' with a "
+        "written justification recorded in SonarCloud."
+    ),
+}
 
-def issue_row(issue, link_type="issue"):
-    """Render one table row for a bug or vulnerability."""
-    key      = issue.get("key", "")
-    msg      = issue.get("message", "—")[:120]
-    sev      = issue.get("severity", "")
-    comp     = issue.get("component", "").split(":")[-1]          # strip project prefix
-    line     = issue.get("line", "")
-    rule     = issue.get("rule", "")
-    status   = issue.get("status", "OPEN")
-    link     = f"{SONAR_DASHBOARD}&issues={key}"
+def get_advice(rule: str, issue_type: str) -> tuple:
+    """Return (title, advice_text) for a rule, falling back to generic."""
+    for prefix, advice in RULE_ADVICE.items():
+        if rule.startswith(prefix) or rule == prefix:
+            return advice
+    return GENERIC_ADVICE.get(issue_type.upper(), ("Review required",
+            "Consult the SonarCloud rule description for specific remediation steps."))
+
+# ─────────────────────────────────────────────────
+# HTML rendering helpers
+# ─────────────────────────────────────────────────
+SEV_META = {
+    "BLOCKER":  ("#dc2626", "#fef2f2", "#fee2e2"),   # fg, light-bg, light-border
+    "CRITICAL": ("#ea580c", "#fff7ed", "#fed7aa"),
+    "MAJOR":    ("#ca8a04", "#fefce8", "#fef08a"),
+    "MINOR":    ("#2563eb", "#eff6ff", "#bfdbfe"),
+    "INFO":     ("#6b7280", "#f9fafb", "#e5e7eb"),
+    "HIGH":     ("#dc2626", "#fef2f2", "#fee2e2"),
+    "MEDIUM":   ("#ca8a04", "#fefce8", "#fef08a"),
+    "LOW":      ("#2563eb", "#eff6ff", "#bfdbfe"),
+}
+
+def sev_badge(sev: str) -> str:
+    s = (sev or "INFO").upper()
+    fg, _, _ = SEV_META.get(s, ("#6b7280", "#f9fafb", "#e5e7eb"))
+    return (f'<span class="badge" style="--badge-fg:{fg};">{s}</span>')
+
+_row_counter = [0]  # mutable so nested functions can increment
+
+def issue_row(issue: dict, itype: str = "BUG") -> str:
+    _row_counter[0] += 1
+    uid = f"row-{_row_counter[0]}"
+
+    key   = issue.get("key", "")
+    msg   = issue.get("message", "—")[:150]
+    sev   = issue.get("severity", "INFO")
+    comp  = issue.get("component", "").split(":")[-1]
+    rule  = issue.get("rule", "")
+    status= issue.get("status", "OPEN")
+    line  = get_line(issue)                       # ← fixed line lookup
+    link  = f"{SONAR_DASHBOARD}&issues={key}"
+    adv_title, adv_body = get_advice(rule, itype)
+
+    loc_text = comp + (f":{line}" if line != "N/A" else "")
+
     return f"""
-<tr>
-  <td><a href="{link}" target="_blank" title="View in SonarCloud"
-         style="color:#3a86ff;text-decoration:none;">{comp}{f':{line}' if line else ''}</a></td>
-  <td>{msg}</td>
-  <td>{severity_badge(sev)}</td>
-  <td><code style="font-size:11px;color:#888;">{rule}</code></td>
-  <td><span style="font-size:11px;color:#aaa;">{status}</span></td>
+<tr class="issue-row" onclick="toggleRow('{uid}')">
+  <td class="td-loc">
+    <a href="{link}" target="_blank" onclick="event.stopPropagation()"
+       class="loc-link" title="Open in SonarCloud">{loc_text}</a>
+    <span class="line-chip">line {line}</span>
+  </td>
+  <td class="td-msg">{msg}</td>
+  <td>{sev_badge(sev)}</td>
+  <td><code class="rule-code">{rule}</code></td>
+  <td><span class="status-chip">{status}</span></td>
+  <td class="td-expand"><span class="chevron">›</span></td>
+</tr>
+<tr id="{uid}" class="fix-row" style="display:none;">
+  <td colspan="6" class="fix-cell">
+    <div class="fix-inner">
+      <div class="fix-title">🔧 {adv_title}</div>
+      <div class="fix-body">{adv_body}</div>
+      <a href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}"
+         target="_blank" class="fix-rule-link">View rule documentation →</a>
+    </div>
+  </td>
 </tr>"""
 
-def hotspot_row(hs):
-    """Render one table row for a security hotspot."""
+def hotspot_row(hs: dict) -> str:
+    _row_counter[0] += 1
+    uid = f"row-{_row_counter[0]}"
+
     key      = hs.get("key", "")
-    msg      = hs.get("message", "—")[:120]
-    vuln_prob = hs.get("vulnerabilityProbability", "")
+    msg      = hs.get("message", "—")[:150]
+    prob     = hs.get("vulnerabilityProbability", "LOW")
     comp     = hs.get("component", "").split(":")[-1]
-    line     = hs.get("line", "")
     rule     = hs.get("ruleKey", "")
+    line     = get_line(hs)
     link     = f"{SONAR_URL}/security_hotspots?id={PROJECT_KEY}&hotspots={key}"
+    adv_title, adv_body = get_advice(rule, "HOTSPOT")
+
+    loc_text = comp + (f":{line}" if line != "N/A" else "")
+
     return f"""
-<tr>
-  <td><a href="{link}" target="_blank" style="color:#3a86ff;text-decoration:none;"
-         >{comp}{f':{line}' if line else ''}</a></td>
-  <td>{msg}</td>
-  <td>{severity_badge(vuln_prob)}</td>
-  <td><code style="font-size:11px;color:#888;">{rule}</code></td>
-  <td><span style="font-size:11px;color:#aaa;">TO_REVIEW</span></td>
+<tr class="issue-row" onclick="toggleRow('{uid}')">
+  <td class="td-loc">
+    <a href="{link}" target="_blank" onclick="event.stopPropagation()"
+       class="loc-link" title="Open in SonarCloud">{loc_text}</a>
+    <span class="line-chip">line {line}</span>
+  </td>
+  <td class="td-msg">{msg}</td>
+  <td>{sev_badge(prob)}</td>
+  <td><code class="rule-code">{rule}</code></td>
+  <td><span class="status-chip">TO_REVIEW</span></td>
+  <td class="td-expand"><span class="chevron">›</span></td>
+</tr>
+<tr id="{uid}" class="fix-row" style="display:none;">
+  <td colspan="6" class="fix-cell">
+    <div class="fix-inner">
+      <div class="fix-title">🔧 {adv_title}</div>
+      <div class="fix-body">{adv_body}</div>
+      <a href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}"
+         target="_blank" class="fix-rule-link">View rule documentation →</a>
+    </div>
+  </td>
 </tr>"""
 
-def issues_table(rows_html, label, count, colour):
+def issues_table(rows_html: list, empty_label: str) -> str:
     if not rows_html:
-        return f'<p style="color:#888;font-style:italic;">No {label} found.</p>'
+        return f'<p class="empty-msg">No {empty_label} detected — great work!</p>'
     return f"""
-<div style="margin-bottom:24px;">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-    <span style="background:{colour};color:#fff;border-radius:50%;
-                 width:26px;height:26px;display:flex;align-items:center;
-                 justify-content:center;font-weight:700;font-size:13px;">{count}</span>
-    <span style="font-weight:600;font-size:14px;">{label}</span>
-    <span style="color:#888;font-size:12px;">(showing up to 10)</span>
-  </div>
-  <div style="overflow-x:auto;">
-    <table style="width:100%;border-collapse:collapse;font-size:13px;">
-      <thead>
-        <tr style="background:#f0f4ff;text-align:left;">
-          <th style="padding:8px 12px;border-bottom:1px solid #dde3f0;">Location</th>
-          <th style="padding:8px 12px;border-bottom:1px solid #dde3f0;">Message</th>
-          <th style="padding:8px 12px;border-bottom:1px solid #dde3f0;">Severity</th>
-          <th style="padding:8px 12px;border-bottom:1px solid #dde3f0;">Rule</th>
-          <th style="padding:8px 12px;border-bottom:1px solid #dde3f0;">Status</th>
-        </tr>
-      </thead>
-      <tbody>{"".join(rows_html)}</tbody>
-    </table>
-  </div>
+<div class="table-wrap">
+  <table class="issue-table">
+    <thead>
+      <tr>
+        <th>Location</th>
+        <th>Message</th>
+        <th>Severity</th>
+        <th>Rule</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>{"".join(rows_html)}</tbody>
+  </table>
+  <p class="table-note">Click a row to see remediation guidance.</p>
 </div>"""
 
-# ─────────────────────────────────────────
-# Build issue table HTML blocks
-# ─────────────────────────────────────────
-bug_rows      = [issue_row(i) for i in bug_issues]
-vuln_rows     = [issue_row(i) for i in vuln_issues]
-hotspot_rows  = [hotspot_row(h) for h in hotspot_list]
+# Build HTML blocks
+bug_rows     = [issue_row(i, "BUG")           for i in bug_issues]
+vuln_rows    = [issue_row(i, "VULNERABILITY")  for i in vuln_issues]
+hs_rows      = [hotspot_row(h)                 for h in hotspot_list]
 
-bugs_table_html     = issues_table(bug_rows,     "Bugs",                  bugs_count,     "#e74c3c")
-vulns_table_html    = issues_table(vuln_rows,    "Vulnerabilities",       vulns_count,    "#e67e22")
-hotspots_table_html = issues_table(hotspot_rows, "Security Hotspots",     hotspots_count, "#9b59b6")
+bugs_html     = issues_table(bug_rows,  "bugs")
+vulns_html    = issues_table(vuln_rows, "vulnerabilities")
+hotspots_html = issues_table(hs_rows,  "hotspots")
 
-# ─────────────────────────────────────────
-# History chart data
-# ─────────────────────────────────────────
-history_labels = json.dumps([e["timestamp"] for e in history])
-history_scores = json.dumps([e["risk_score"] for e in history])
-history_levels = json.dumps([e.get("level", "") for e in history])
+# Chart data
+h_labels = json.dumps([e["timestamp"]  for e in history])
+h_scores = json.dumps([e["risk_score"] for e in history])
+h_levels = json.dumps([e.get("level","") for e in history])
 
-# ─────────────────────────────────────────
-# Risk colours
-# ─────────────────────────────────────────
-RISK_BG   = {"LOW": "#0f4c2a", "MEDIUM": "#4a3000", "HIGH": "#4a0a0a"}
-RISK_FG   = {"LOW": "#2ecc71", "MEDIUM": "#f39c12", "HIGH": "#e74c3c"}
-RISK_GLOW = {"LOW": "rgba(46,204,113,0.3)", "MEDIUM": "rgba(243,156,18,0.3)", "HIGH": "rgba(231,76,60,0.3)"}
-
-level_bg   = RISK_BG.get(level,   "#1a1f2e")
-level_fg   = RISK_FG.get(level,   "#fff")
-level_glow = RISK_GLOW.get(level, "transparent")
-
-# Detected types pill string
-type_pills_html = " ".join(
-    f'<span style="background:#1e3a5f;color:#7ec8e3;border-radius:20px;'
-    f'padding:3px 12px;font-size:12px;font-weight:600;">{t.upper()}</span>'
-    for t in DETECTED_TYPES
+# Misc
+type_pills = "".join(
+    f'<span class="type-pill">{t.upper()}</span>' for t in DETECTED_TYPES
 )
 
-# Decision colour
-decision_fg = level_fg
+RISK_CSS_CLASS = {"LOW": "risk-low", "MEDIUM": "risk-med", "HIGH": "risk-high"}
+risk_cls = RISK_CSS_CLASS.get(level, "risk-low")
 
-# Summary sentence
+decision_icon = {"HIGH": "🚫", "MEDIUM": "⚠️", "LOW": "✅"}.get(level, "✅")
+
 if level == "HIGH":
-    summary = (f"This build was <strong>BLOCKED</strong>: {vulns_count} vulnerabilities, "
-               f"{bugs_count} bugs and {hotspots_count} security hotspots exceed acceptable thresholds. "
-               f"Immediate remediation required.")
+    summary_txt = (f"Build blocked: {vulns_count} vulnerabilities, {bugs_count} bugs, "
+                   f"and {hotspots_count} hotspots exceed acceptable thresholds. "
+                   "Immediate remediation required before deployment.")
 elif level == "MEDIUM":
-    summary = (f"This build was <strong>approved with warnings</strong>: {vulns_count} vulnerabilities, "
-               f"{bugs_count} bugs and {hotspots_count} hotspots were detected. Manual review recommended.")
+    summary_txt = (f"Build approved with warnings: {vulns_count} vulnerabilities, "
+                   f"{bugs_count} bugs, {hotspots_count} hotspots detected. "
+                   "Manual security review recommended.")
 else:
-    summary = (f"This build was <strong>approved</strong>. The detected issues "
-               f"({vulns_count} vulns, {bugs_count} bugs, {hotspots_count} hotspots) "
-               f"are within acceptable risk thresholds.")
+    summary_txt = (f"Build approved. Detected issues ({vulns_count} vulns, "
+                   f"{bugs_count} bugs, {hotspots_count} hotspots) are within thresholds.")
 
 now_str = datetime.now(IST).strftime("%d %b %Y – %H:%M:%S IST")
 
-# ─────────────────────────────────────────
-# HTML template
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────
+# HTML report
+# ─────────────────────────────────────────────────
 html = f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DevSecOps · Security Dashboard</title>
+<title>Security Dashboard — {PROJECT_KEY}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <style>
-/* ── Reset & Base ─────────────────────────── */
-*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+/* ═══════════════════════════════════════════════
+   Design tokens — dark (default)
+═══════════════════════════════════════════════ */
 :root {{
-  --bg:          #0d1117;
-  --surface:     #161b22;
-  --surface2:    #1c2433;
-  --border:      rgba(255,255,255,0.08);
-  --text:        #e6edf3;
-  --muted:       #8b949e;
-  --accent:      #3a86ff;
-  --low:         #2ecc71;
-  --medium:      #f39c12;
-  --high:        #e74c3c;
-  --risk-fg:     {level_fg};
-  --risk-glow:   {level_glow};
-  --mono:        'Space Mono', monospace;
-  --sans:        'DM Sans', sans-serif;
-  --radius:      12px;
+  color-scheme: dark;
+  --bg:        #0f1117;
+  --bg2:       #161a24;
+  --bg3:       #1e2336;
+  --border:    rgba(255,255,255,0.07);
+  --border2:   rgba(255,255,255,0.12);
+  --text:      #e2e8f0;
+  --text2:     #94a3b8;
+  --text3:     #64748b;
+  --accent:    #6366f1;
+  --accent-s:  rgba(99,102,241,0.15);
+  --low-fg:    #22c55e;  --low-bg:  rgba(34,197,94,0.12);
+  --med-fg:    #f59e0b;  --med-bg:  rgba(245,158,11,0.12);
+  --high-fg:   #ef4444;  --high-bg: rgba(239,68,68,0.12);
+  --fix-bg:    #131a2a;
+  --fix-border:#2d3a55;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Inter', sans-serif;
+  --r: 10px;
+  --shadow: 0 2px 12px rgba(0,0,0,0.35);
 }}
+
+/* Light theme */
+html[data-theme="light"] {{
+  color-scheme: light;
+  --bg:        #f8fafc;
+  --bg2:       #ffffff;
+  --bg3:       #f1f5f9;
+  --border:    rgba(0,0,0,0.07);
+  --border2:   rgba(0,0,0,0.12);
+  --text:      #0f172a;
+  --text2:     #475569;
+  --text3:     #94a3b8;
+  --accent:    #4f46e5;
+  --accent-s:  rgba(79,70,229,0.08);
+  --low-fg:    #16a34a;  --low-bg:  rgba(22,163,74,0.08);
+  --med-fg:    #d97706;  --med-bg:  rgba(217,119,6,0.08);
+  --high-fg:   #dc2626;  --high-bg: rgba(220,38,38,0.08);
+  --fix-bg:    #f0f4ff;
+  --fix-border:#c7d2fe;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+}}
+
+/* ═══════════════════════════════════════════════
+   Base
+═══════════════════════════════════════════════ */
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
 body {{
+  font-family: var(--sans);
   background: var(--bg);
   color: var(--text);
-  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
   min-height: 100vh;
-  padding: 0 0 60px;
+  transition: background .25s, color .25s;
 }}
 
-/* ── Top nav bar ──────────────────────────── */
-.topbar {{
-  background: var(--surface);
+a {{ color: var(--accent); text-decoration: none; }}
+a:hover {{ text-decoration: underline; }}
+
+/* ═══════════════════════════════════════════════
+   Top nav
+═══════════════════════════════════════════════ */
+.nav {{
+  position: sticky; top: 0; z-index: 200;
+  background: var(--bg2);
   border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 40px;
-  height: 56px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; height: 52px;
+  backdrop-filter: blur(10px);
 }}
-.topbar-brand {{
+.nav-brand {{
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--accent);
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: flex; align-items: center; gap: 10px;
+  letter-spacing: .04em;
 }}
-.topbar-brand .dot {{
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--risk-fg);
-  box-shadow: 0 0 6px var(--risk-glow);
-  animation: pulse 2s infinite;
+.status-dot {{
+  width: 7px; height: 7px; border-radius: 50%;
+  animation: pulse 2.4s ease-in-out infinite;
 }}
+.status-dot.risk-low  {{ background: var(--low-fg);  box-shadow: 0 0 6px var(--low-fg); }}
+.status-dot.risk-med  {{ background: var(--med-fg);  box-shadow: 0 0 6px var(--med-fg); }}
+.status-dot.risk-high {{ background: var(--high-fg); box-shadow: 0 0 6px var(--high-fg); }}
 @keyframes pulse {{
   0%, 100% {{ opacity: 1; transform: scale(1); }}
-  50%       {{ opacity: .6; transform: scale(1.3); }}
+  50%       {{ opacity: .5; transform: scale(1.4); }}
 }}
-.topbar-meta {{
-  font-size: 12px;
-  color: var(--muted);
-  font-family: var(--mono);
+.nav-right {{ display: flex; align-items: center; gap: 8px; }}
+.nav-ts {{ font-family: var(--mono); font-size: 11px; color: var(--text3); }}
+
+/* Theme toggle */
+.theme-toggle {{
+  display: flex;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  overflow: hidden;
+  padding: 2px; gap: 2px;
+}}
+.theme-btn {{
+  background: none; border: none;
+  padding: 5px 10px; cursor: pointer;
+  border-radius: 6px; font-size: 13px;
+  color: var(--text3);
+  transition: background .15s, color .15s;
+}}
+.theme-btn.active {{
+  background: var(--accent);
+  color: #fff;
 }}
 
-/* ── Hero ─────────────────────────────────── */
+/* ═══════════════════════════════════════════════
+   Hero
+═══════════════════════════════════════════════ */
 .hero {{
-  background: linear-gradient(160deg, #0d1b35 0%, var(--bg) 60%);
-  padding: 60px 40px 40px;
+  padding: 52px 28px 40px;
   text-align: center;
   border-bottom: 1px solid var(--border);
+  background: var(--bg2);
 }}
-.hero h1 {{
+.hero-title {{
   font-family: var(--mono);
-  font-size: clamp(22px, 4vw, 36px);
+  font-size: clamp(18px, 3vw, 28px);
+  font-weight: 600;
   color: var(--text);
-  letter-spacing: -1px;
-  margin-bottom: 8px;
+  letter-spacing: -.02em;
+  margin-bottom: 4px;
 }}
-.hero .subtitle {{
-  color: var(--muted);
-  font-size: 14px;
-  margin-bottom: 20px;
-}}
-.hero .type-pills {{ margin-bottom: 30px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }}
-
-/* ── Risk Hero Card ───────────────────────── */
-.risk-hero {{
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  background: {level_bg};
-  border: 2px solid {level_fg};
+.hero-sub {{ color: var(--text2); font-size: 13px; margin-bottom: 18px; }}
+.type-pills {{ display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 32px; }}
+.type-pill {{
+  background: var(--accent-s);
+  color: var(--accent);
+  border: 1px solid rgba(99,102,241,0.2);
   border-radius: 20px;
-  padding: 28px 60px;
-  box-shadow: 0 0 40px {level_glow};
-  margin-bottom: 16px;
-}}
-.risk-hero .score {{
+  padding: 3px 13px;
   font-family: var(--mono);
-  font-size: 72px;
-  font-weight: 700;
-  color: {level_fg};
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+}}
+.score-ring {{
+  display: inline-flex; flex-direction: column; align-items: center;
+  padding: 28px 56px;
+  border-radius: 16px;
+  border-width: 1.5px; border-style: solid;
+  margin-bottom: 16px;
+  transition: all .25s;
+}}
+.score-ring.risk-low  {{ background: var(--low-bg);  border-color: var(--low-fg);  }}
+.score-ring.risk-med  {{ background: var(--med-bg);  border-color: var(--med-fg);  }}
+.score-ring.risk-high {{ background: var(--high-bg); border-color: var(--high-fg); }}
+
+.score-num {{
+  font-family: var(--mono);
+  font-size: 64px;
+  font-weight: 600;
   line-height: 1;
 }}
-.risk-hero .label {{
-  font-size: 13px;
-  letter-spacing: 3px;
-  color: {level_fg};
-  opacity: .7;
-  margin-top: 4px;
+.score-ring.risk-low  .score-num {{ color: var(--low-fg);  }}
+.score-ring.risk-med  .score-num {{ color: var(--med-fg);  }}
+.score-ring.risk-high .score-num {{ color: var(--high-fg); }}
+
+.score-lbl {{
+  font-size: 10px;
+  letter-spacing: .12em;
+  margin-top: 5px;
+  opacity: .65;
   text-transform: uppercase;
 }}
-.risk-badge {{
+.score-ring.risk-low  .score-lbl {{ color: var(--low-fg);  }}
+.score-ring.risk-med  .score-lbl {{ color: var(--med-fg);  }}
+.score-ring.risk-high .score-lbl {{ color: var(--high-fg); }}
+
+.level-badge {{
+  display: inline-block;
   font-family: var(--mono);
-  font-size: 18px;
-  font-weight: 700;
-  color: {level_fg};
-  background: {level_bg};
-  border: 1px solid {level_fg};
-  border-radius: 30px;
-  padding: 6px 24px;
-  letter-spacing: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  padding: 5px 20px;
+  border-radius: 20px;
+  border-width: 1px; border-style: solid;
 }}
+.level-badge.risk-low  {{ color: var(--low-fg);  background: var(--low-bg);  border-color: var(--low-fg);  }}
+.level-badge.risk-med  {{ color: var(--med-fg);  background: var(--med-bg);  border-color: var(--med-fg);  }}
+.level-badge.risk-high {{ color: var(--high-fg); background: var(--high-bg); border-color: var(--high-fg); }}
 
-/* ── Layout ───────────────────────────────── */
-.page {{ max-width: 1200px; margin: 0 auto; padding: 32px 24px 0; }}
+/* ═══════════════════════════════════════════════
+   Page layout
+═══════════════════════════════════════════════ */
+.page {{ max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }}
 
-/* ── Section ──────────────────────────────── */
-.section {{
-  background: var(--surface);
+.card {{
+  background: var(--bg2);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 28px;
-  margin-bottom: 24px;
-}}
-.section-title {{
-  font-family: var(--mono);
-  font-size: 13px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--muted);
+  border-radius: var(--r);
+  padding: 24px;
   margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  box-shadow: var(--shadow);
+  transition: background .25s, border-color .25s;
 }}
-.section-title::before {{
+.card-title {{
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 18px;
+  display: flex; align-items: center; gap: 8px;
+}}
+.card-title::before {{
   content: '';
   display: block;
-  width: 3px; height: 16px;
+  width: 3px; height: 14px;
   border-radius: 2px;
   background: var(--accent);
+  flex-shrink: 0;
 }}
 
-/* ── Metric Cards ─────────────────────────── */
+/* ═══════════════════════════════════════════════
+   Metric grid
+═══════════════════════════════════════════════ */
 .metric-grid {{
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
 }}
-.metric-card {{
-  background: var(--surface2);
+.metric-tile {{
+  background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px 16px;
+  border-radius: 8px;
+  padding: 18px 14px;
   text-align: center;
   transition: border-color .2s, transform .2s;
+  cursor: default;
 }}
-.metric-card:hover {{ border-color: var(--accent); transform: translateY(-2px); }}
-.metric-card .val {{
+.metric-tile:hover {{ border-color: var(--border2); transform: translateY(-1px); }}
+.metric-tile .m-val {{
   font-family: var(--mono);
-  font-size: 36px;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 600;
   line-height: 1;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }}
-.metric-card .val.bug   {{ color: var(--high); }}
-.metric-card .val.vuln  {{ color: #e67e22; }}
-.metric-card .val.spot  {{ color: #9b59b6; }}
-.metric-card .val.smell {{ color: var(--medium); }}
-.metric-card .val.cov   {{ color: var(--accent); }}
-.metric-card .val.dup   {{ color: var(--muted); }}
-.metric-card .lbl {{
-  font-size: 12px;
-  color: var(--muted);
+.m-bug   {{ color: #ef4444; }}
+.m-vuln  {{ color: #f97316; }}
+.m-spot  {{ color: #a855f7; }}
+.m-smell {{ color: #f59e0b; }}
+.m-cov   {{ color: var(--accent); }}
+.m-dup   {{ color: var(--text3); }}
+.metric-tile .m-lbl {{
+  font-size: 11px;
+  color: var(--text3);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: .06em;
 }}
 
-/* ── Rating badges ────────────────────────── */
+/* Ratings row */
 .rating-row {{
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
 }}
-.rating-item {{
-  flex: 1;
-  min-width: 120px;
-  background: var(--surface2);
+.rating-tile {{
+  background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 14px;
   text-align: center;
 }}
-.rating-item .rating-val {{
+.rating-tile .r-val {{
   font-family: var(--mono);
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 600;
 }}
-.rating-A {{ color: #2ecc71; }}
-.rating-B {{ color: #a8e063; }}
-.rating-C {{ color: var(--medium); }}
-.rating-D {{ color: #e67e22; }}
-.rating-E {{ color: var(--high); }}
-.rating-item .rating-lbl {{
+.r-A {{ color: #22c55e; }}
+.r-B {{ color: #86efac; }}
+.r-C {{ color: #f59e0b; }}
+.r-D {{ color: #f97316; }}
+.r-E {{ color: #ef4444; }}
+.r-Q {{ color: var(--text3); }}
+.rating-tile .r-lbl {{
   font-size: 11px;
-  color: var(--muted);
-  margin-top: 4px;
+  color: var(--text3);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: .06em;
+  margin-top: 3px;
 }}
 
-/* ── Decision banner ──────────────────────── */
+/* ═══════════════════════════════════════════════
+   Decision banner
+═══════════════════════════════════════════════ */
 .decision-banner {{
-  background: {level_bg};
-  border: 1px solid {level_fg};
-  border-radius: 10px;
-  padding: 18px 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
+  display: flex; align-items: flex-start; gap: 16px;
+  padding: 18px 20px;
+  border-radius: 8px;
+  border-width: 1px; border-style: solid;
+  margin-bottom: 14px;
 }}
-.decision-icon {{
-  font-size: 28px;
-  flex-shrink: 0;
-}}
-.decision-text {{ flex: 1; }}
-.decision-text .action {{
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 700;
-  color: {level_fg};
-  letter-spacing: 1px;
-}}
-.decision-text .summary {{
-  font-size: 13px;
-  color: var(--muted);
-  margin-top: 4px;
-  line-height: 1.6;
-}}
-.trend-chip {{
+.decision-banner.risk-low  {{ background: var(--low-bg);  border-color: var(--low-fg);  }}
+.decision-banner.risk-med  {{ background: var(--med-bg);  border-color: var(--med-fg);  }}
+.decision-banner.risk-high {{ background: var(--high-bg); border-color: var(--high-fg); }}
+.d-icon {{ font-size: 22px; flex-shrink: 0; line-height: 1.4; }}
+.d-body {{ flex: 1; }}
+.d-action {{
   font-family: var(--mono);
   font-size: 12px;
-  padding: 4px 12px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: .08em;
+  margin-bottom: 4px;
+}}
+.decision-banner.risk-low  .d-action {{ color: var(--low-fg);  }}
+.decision-banner.risk-med  .d-action {{ color: var(--med-fg);  }}
+.decision-banner.risk-high .d-action {{ color: var(--high-fg); }}
+.d-summary {{ font-size: 13px; color: var(--text2); line-height: 1.55; }}
+.d-right {{ display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }}
+.trend-chip {{
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border2);
+  color: var(--text2);
   white-space: nowrap;
 }}
-
-/* ── Issues tables ────────────────────────── */
-.issues-section table {{ width:100%; border-collapse:collapse; font-size:13px; }}
-.issues-section th {{
-  background: var(--surface2);
-  padding: 10px 14px;
-  text-align: left;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
+.formula-line {{
   font-family: var(--mono);
-}}
-.issues-section td {{
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 12px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-  color: var(--text);
+  background: var(--bg3);
+  border-radius: 6px;
+  border: 1px solid var(--border);
 }}
-.issues-section tr:hover td {{ background: rgba(58,134,255,0.05); }}
-.issues-section tr:last-child td {{ border-bottom: none; }}
 
-/* Tab nav */
-.tab-nav {{
-  display: flex;
-  gap: 2px;
-  background: var(--surface2);
-  border-radius: 8px;
-  padding: 4px;
-  margin-bottom: 20px;
+/* ═══════════════════════════════════════════════
+   Tabs
+═══════════════════════════════════════════════ */
+.tab-bar {{
+  display: flex; gap: 3px;
+  background: var(--bg3);
+  border-radius: 8px; padding: 3px;
   width: fit-content;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
 }}
 .tab-btn {{
-  background: none;
-  border: none;
-  color: var(--muted);
-  padding: 6px 18px;
+  background: none; border: none;
+  color: var(--text2);
+  padding: 6px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  transition: all .2s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: .06em;
+  display: flex; align-items: center; gap: 7px;
+  transition: all .15s;
 }}
 .tab-btn.active {{
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 6px rgba(99,102,241,.3);
 }}
-.tab-btn:hover:not(.active) {{ color: var(--text); }}
+.tab-btn:not(.active):hover {{ color: var(--text); background: var(--border); }}
+.tab-badge {{
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; border-radius: 9px; padding: 0 5px;
+  font-size: 10px; font-weight: 700;
+  background: rgba(255,255,255,0.15);
+}}
+.tab-btn.active .tab-badge {{ background: rgba(255,255,255,0.25); color: #fff; }}
 .tab-pane {{ display: none; }}
 .tab-pane.active {{ display: block; }}
-.count-dot {{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px; height: 18px;
-  border-radius: 50%;
+
+/* ═══════════════════════════════════════════════
+   Issue tables
+═══════════════════════════════════════════════ */
+.table-wrap {{ overflow-x: auto; }}
+.issue-table {{
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}}
+.issue-table thead th {{
+  font-family: var(--mono);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text3);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  background: var(--bg3);
+  white-space: nowrap;
+}}
+.issue-table tbody .issue-row {{
+  cursor: pointer;
+  transition: background .12s;
+}}
+.issue-table tbody .issue-row:hover {{ background: var(--accent-s); }}
+.issue-table tbody td {{
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+}}
+.td-loc {{ min-width: 180px; }}
+.td-msg {{ min-width: 200px; color: var(--text2) !important; }}
+.td-expand {{ width: 32px; text-align: center; }}
+
+.loc-link {{
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent) !important;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}}
+.loc-link:hover {{ text-decoration: underline !important; }}
+.line-chip {{
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}}
+.rule-code {{
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}}
+.status-chip {{
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+}}
+.chevron {{
+  font-size: 16px;
+  color: var(--text3);
+  display: inline-block;
+  transition: transform .2s;
+  line-height: 1;
+}}
+.issue-row.expanded .chevron {{ transform: rotate(90deg); color: var(--accent); }}
+
+/* severity badge */
+.badge {{
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--badge-fg);
+  background: color-mix(in srgb, var(--badge-fg) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-fg) 25%, transparent);
 }}
 
-/* ── Chart ────────────────────────────────── */
-.chart-wrap {{
-  position: relative;
-  height: 280px;
+/* Fix drawer */
+.fix-row {{ display: none; }}
+.fix-row.open {{ display: table-row !important; }}
+.fix-cell {{ padding: 0 !important; border-bottom: 1px solid var(--border) !important; }}
+.fix-inner {{
+  padding: 18px 20px;
+  background: var(--fix-bg);
+  border-left: 3px solid var(--accent);
+  border-top: 1px solid var(--fix-border);
+}}
+.fix-title {{
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}}
+.fix-body {{
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.65;
+  margin-bottom: 10px;
+}}
+.fix-rule-link {{
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+}}
+.table-note {{
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 10px;
+  font-style: italic;
+}}
+.empty-msg {{
+  font-size: 13px;
+  color: var(--text3);
+  padding: 20px 0;
+  font-style: italic;
 }}
 
-/* ── Links ────────────────────────────────── */
-.links-row {{
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}}
-.btn-link {{
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+/* ═══════════════════════════════════════════════
+   Links row
+═══════════════════════════════════════════════ */
+.links-row {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+.lnk {{
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px;
   border-radius: 8px;
   font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-decoration: none;
-  transition: opacity .2s, transform .15s;
-  border: 1px solid var(--border);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: .04em;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  background: var(--bg3);
+  transition: all .15s;
 }}
-.btn-link:hover {{ opacity: .85; transform: translateY(-1px); }}
-.btn-sonar {{ background: #1b4332; color: #2ecc71; border-color: #2ecc7144; }}
-.btn-repo  {{ background: #1c2433; color: var(--accent); border-color: #3a86ff44; }}
-.btn-app   {{ background: #2c1f4a; color: #a78bfa; border-color: #a78bfa44; }}
-.btn-run   {{ background: #2c1a00; color: var(--medium); border-color: #f39c1244; }}
+.lnk:hover {{
+  background: var(--accent-s);
+  border-color: rgba(99,102,241,.3);
+  color: var(--accent);
+  text-decoration: none;
+}}
 
-/* ── Footer ───────────────────────────────── */
+/* ═══════════════════════════════════════════════
+   Chart
+═══════════════════════════════════════════════ */
+.chart-wrap {{ position: relative; height: 260px; }}
+
+/* ═══════════════════════════════════════════════
+   Footer
+═══════════════════════════════════════════════ */
 .footer {{
   text-align: center;
-  color: var(--muted);
-  font-size: 12px;
-  padding: 40px 24px 0;
   font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  padding: 28px 0 0;
 }}
 </style>
 </head>
 <body>
 
-<!-- Top bar -->
-<nav class="topbar">
-  <div class="topbar-brand">
-    <div class="dot"></div>
-    DEVSECOPS · RISK DASHBOARD
+<!-- ─── Nav ─────────────────────────────────── -->
+<nav class="nav">
+  <div class="nav-brand">
+    <div class="status-dot {risk_cls}"></div>
+    DEVSECOPS · SECURITY DASHBOARD
   </div>
-  <div class="topbar-meta">{now_str}</div>
+  <div class="nav-right">
+    <span class="nav-ts">{now_str}</span>
+    <div class="theme-toggle" id="themeToggle">
+      <button class="theme-btn" data-t="light" onclick="setTheme('light')" title="Light mode">☀️</button>
+      <button class="theme-btn" data-t="dark"  onclick="setTheme('dark')"  title="Dark mode">🌙</button>
+      <button class="theme-btn" data-t="system" onclick="setTheme('system')" title="System default">⚙</button>
+    </div>
+  </div>
 </nav>
 
-<!-- Hero -->
+<!-- ─── Hero ─────────────────────────────────── -->
 <div class="hero">
-  <h1>Security Risk Report</h1>
-  <p class="subtitle">Project: <strong style="color:var(--text);">{PROJECT_KEY}</strong></p>
-  <div class="type-pills">{type_pills_html}</div>
-
-  <div class="risk-hero">
-    <div class="score">{risk_score}</div>
-    <div class="label">Risk Score</div>
+  <div class="hero-title">Security Risk Report</div>
+  <div class="hero-sub">Project: <strong>{PROJECT_KEY}</strong></div>
+  <div class="type-pills">{type_pills}</div>
+  <div class="score-ring {risk_cls}">
+    <div class="score-num">{risk_score}</div>
+    <div class="score-lbl">Risk Score</div>
   </div>
   <br>
-  <span class="risk-badge">{level} RISK</span>
+  <span class="level-badge {risk_cls}">{level} RISK</span>
 </div>
 
-<!-- Page content -->
+<!-- ─── Page ─────────────────────────────────── -->
 <div class="page">
 
   <!-- Quick Links -->
-  <div class="section">
-    <div class="section-title">Quick Links</div>
+  <div class="card">
+    <div class="card-title">Quick Links</div>
     <div class="links-row">
-      <a class="btn-link btn-sonar" href="{SONAR_DASHBOARD}" target="_blank">
-        ⬡ SonarCloud Dashboard
-      </a>
-      <a class="btn-link btn-repo" href="{PROJECT_REPO}" target="_blank">
-        ⌥ GitHub Repository
-      </a>
-      <a class="btn-link btn-app" href="{RUNNING_APP}" target="_blank">
-        ▶ Running Application
-      </a>
-      <a class="btn-link btn-run" href="{GITHUB_RUN_URL}" target="_blank">
-        ⚙ CI/CD Run
-      </a>
+      <a class="lnk" href="{SONAR_DASHBOARD}" target="_blank">⬡ SonarCloud Dashboard</a>
+      <a class="lnk" href="{PROJECT_REPO}" target="_blank">⌥ GitHub Repository</a>
+      <a class="lnk" href="{RUNNING_APP}" target="_blank">▶ Running Application</a>
+      <a class="lnk" href="{GITHUB_RUN_URL}" target="_blank">⚙ CI/CD Run</a>
     </div>
   </div>
 
   <!-- Metrics -->
-  <div class="section">
-    <div class="section-title">Metrics Overview</div>
+  <div class="card">
+    <div class="card-title">Metrics Overview</div>
     <div class="metric-grid">
-      <div class="metric-card">
-        <div class="val bug">{bugs_count}</div>
-        <div class="lbl">Bugs</div>
-      </div>
-      <div class="metric-card">
-        <div class="val vuln">{vulns_count}</div>
-        <div class="lbl">Vulnerabilities</div>
-      </div>
-      <div class="metric-card">
-        <div class="val spot">{hotspots_count}</div>
-        <div class="lbl">Hotspots</div>
-      </div>
-      <div class="metric-card">
-        <div class="val smell">{smells_count}</div>
-        <div class="lbl">Code Smells</div>
-      </div>
-      <div class="metric-card">
-        <div class="val cov">{coverage_pct}%</div>
-        <div class="lbl">Coverage</div>
-      </div>
-      <div class="metric-card">
-        <div class="val dup">{duplication_pct}%</div>
-        <div class="lbl">Duplication</div>
-      </div>
+      <div class="metric-tile"><div class="m-val m-bug">{bugs_count}</div><div class="m-lbl">Bugs</div></div>
+      <div class="metric-tile"><div class="m-val m-vuln">{vulns_count}</div><div class="m-lbl">Vulnerabilities</div></div>
+      <div class="metric-tile"><div class="m-val m-spot">{hotspots_count}</div><div class="m-lbl">Hotspots</div></div>
+      <div class="metric-tile"><div class="m-val m-smell">{smells_count}</div><div class="m-lbl">Code Smells</div></div>
+      <div class="metric-tile"><div class="m-val m-cov">{coverage_pct}%</div><div class="m-lbl">Coverage</div></div>
+      <div class="metric-tile"><div class="m-val m-dup">{duplication_pct}%</div><div class="m-lbl">Duplication</div></div>
     </div>
-
     <div class="rating-row">
-      <div class="rating-item">
-        <div class="rating-val rating-{reliability_rating}">{reliability_rating}</div>
-        <div class="rating-lbl">Reliability</div>
+      <div class="rating-tile">
+        <div class="r-val r-{reliability_rating}">{reliability_rating}</div>
+        <div class="r-lbl">Reliability</div>
       </div>
-      <div class="rating-item">
-        <div class="rating-val rating-{security_rating}">{security_rating}</div>
-        <div class="rating-lbl">Security</div>
+      <div class="rating-tile">
+        <div class="r-val r-{security_rating}">{security_rating}</div>
+        <div class="r-lbl">Security</div>
       </div>
-      <div class="rating-item">
-        <div class="rating-val rating-{maintainability_rating}">{maintainability_rating}</div>
-        <div class="rating-lbl">Maintainability</div>
+      <div class="rating-tile">
+        <div class="r-val r-{maintainability_rating}">{maintainability_rating}</div>
+        <div class="r-lbl">Maintainability</div>
       </div>
-      <div class="rating-item">
-        <div class="rating-val" style="font-size:18px;color:var(--accent);">{risk_score}</div>
-        <div class="rating-lbl">Risk Score</div>
+      <div class="rating-tile">
+        <div class="r-val" style="color:var(--accent);">{risk_score}</div>
+        <div class="r-lbl">Risk Score</div>
       </div>
     </div>
   </div>
 
   <!-- Decision -->
-  <div class="section">
-    <div class="section-title">Governance Decision</div>
-    <div class="decision-banner">
-      <div class="decision-icon">{'🚫' if level=='HIGH' else '⚠️' if level=='MEDIUM' else '✅'}</div>
-      <div class="decision-text">
-        <div class="action">{decision}</div>
-        <div class="summary">{summary}</div>
+  <div class="card">
+    <div class="card-title">Governance Decision</div>
+    <div class="decision-banner {risk_cls}">
+      <div class="d-icon">{decision_icon}</div>
+      <div class="d-body">
+        <div class="d-action">{decision}</div>
+        <div class="d-summary">{summary_txt}</div>
       </div>
-      <div class="trend-chip">{trend}</div>
+      <div class="d-right">
+        <span class="trend-chip">{trend}</span>
+      </div>
     </div>
-    <div style="font-size:12px;color:var(--muted);font-family:var(--mono);">
-      Weights → Bugs×{WEIGHT_BUGS} + Vulns×{WEIGHT_VULNS} + Hotspots×{WEIGHT_HOTSPOTS} = <strong style="color:var(--text);">{risk_score}</strong>
-    </div>
-  </div>
-
-  <!-- Issue Details -->
-  <div class="section issues-section">
-    <div class="section-title">Issue Details</div>
-
-    <div class="tab-nav">
-      <button class="tab-btn active" onclick="switchTab('bugs', this)">
-        <span class="count-dot" style="background:#e74c3c22;color:#e74c3c;">{bugs_count}</span>
-        BUGS
-      </button>
-      <button class="tab-btn" onclick="switchTab('vulns', this)">
-        <span class="count-dot" style="background:#e67e2222;color:#e67e22;">{vulns_count}</span>
-        VULNERABILITIES
-      </button>
-      <button class="tab-btn" onclick="switchTab('hotspots', this)">
-        <span class="count-dot" style="background:#9b59b622;color:#9b59b6;">{hotspots_count}</span>
-        HOTSPOTS
-      </button>
-    </div>
-
-    <div id="tab-bugs" class="tab-pane active">
-      {bugs_table_html}
-    </div>
-    <div id="tab-vulns" class="tab-pane">
-      {vulns_table_html}
-    </div>
-    <div id="tab-hotspots" class="tab-pane">
-      {hotspots_table_html}
+    <div class="formula-line">
+      Risk Score = (Bugs × {WEIGHT_BUGS}) + (Vulns × {WEIGHT_VULNS}) + (Hotspots × {WEIGHT_HOTSPOTS})
+      &nbsp;=&nbsp; ({bugs_count}×{WEIGHT_BUGS}) + ({vulns_count}×{WEIGHT_VULNS}) + ({hotspots_count}×{WEIGHT_HOTSPOTS})
+      &nbsp;=&nbsp; <strong>{risk_score}</strong>
     </div>
   </div>
 
-  <!-- Trend chart -->
-  <div class="section">
-    <div class="section-title">Risk Score Trend</div>
-    <div class="chart-wrap">
-      <canvas id="riskChart"></canvas>
+  <!-- Issues -->
+  <div class="card">
+    <div class="card-title">Issue Details</div>
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('bugs',this)">
+        <span class="tab-badge">{bugs_count}</span> BUGS
+      </button>
+      <button class="tab-btn" onclick="switchTab('vulns',this)">
+        <span class="tab-badge">{vulns_count}</span> VULNERABILITIES
+      </button>
+      <button class="tab-btn" onclick="switchTab('hotspots',this)">
+        <span class="tab-badge">{hotspots_count}</span> HOTSPOTS
+      </button>
     </div>
+    <div id="tab-bugs"     class="tab-pane active">{bugs_html}</div>
+    <div id="tab-vulns"    class="tab-pane">{vulns_html}</div>
+    <div id="tab-hotspots" class="tab-pane">{hotspots_html}</div>
   </div>
 
-</div><!-- /page -->
+  <!-- Trend -->
+  <div class="card">
+    <div class="card-title">Risk Score Trend</div>
+    <div class="chart-wrap"><canvas id="riskChart"></canvas></div>
+  </div>
+
+</div>
 
 <div class="footer">
-  Generated by Intelligent Risk-Adaptive DevSecOps · {now_str}
+  Generated by Intelligent Risk-Adaptive DevSecOps &nbsp;·&nbsp; {now_str}
 </div>
 
 <script>
-/* ── Tab switching ──────────────────────────── */
+/* ══════════════════════════════════════
+   Theme management
+══════════════════════════════════════ */
+const MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
+
+function applyTheme(t) {{
+  const resolved = t === 'system' ? (MEDIA.matches ? 'dark' : 'light') : t;
+  document.documentElement.setAttribute('data-theme', resolved);
+  document.querySelectorAll('.theme-btn').forEach(b => {{
+    b.classList.toggle('active', b.dataset.t === t);
+  }});
+  updateChart(resolved);
+}}
+
+function setTheme(t) {{
+  localStorage.setItem('dso-theme', t);
+  applyTheme(t);
+}}
+
+// Init
+(function() {{
+  const saved = localStorage.getItem('dso-theme') || 'system';
+  applyTheme(saved);
+}})();
+
+MEDIA.addEventListener('change', () => {{
+  const saved = localStorage.getItem('dso-theme') || 'system';
+  if (saved === 'system') applyTheme('system');
+}});
+
+/* ══════════════════════════════════════
+   Tabs
+══════════════════════════════════════ */
 function switchTab(name, btn) {{
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -928,73 +1182,116 @@ function switchTab(name, btn) {{
   btn.classList.add('active');
 }}
 
-/* ── Trend chart ────────────────────────────── */
-const labels = {history_labels};
-const scores = {history_scores};
-const levels = {history_levels};
+/* ══════════════════════════════════════
+   Fix row toggle
+══════════════════════════════════════ */
+function toggleRow(uid) {{
+  const row  = document.getElementById(uid);
+  const trig = row.previousElementSibling;
+  const open = row.classList.contains('open');
+  row.classList.toggle('open', !open);
+  row.style.display = open ? 'none' : 'table-row';
+  trig.classList.toggle('expanded', !open);
+}}
 
-const pointColors = scores.map((_, i) => {{
-  const l = levels[i];
-  return l === 'HIGH' ? '#e74c3c' : l === 'MEDIUM' ? '#f39c12' : '#2ecc71';
-}});
+/* ══════════════════════════════════════
+   Trend chart
+══════════════════════════════════════ */
+const labels = {h_labels};
+const scores = {h_scores};
+const levels = {h_levels};
 
-const ctx = document.getElementById('riskChart').getContext('2d');
-new Chart(ctx, {{
-  type: 'line',
-  data: {{
-    labels,
-    datasets: [{{
-      label: 'Risk Score',
-      data: scores,
-      borderColor: '#3a86ff',
-      backgroundColor: 'rgba(58,134,255,0.08)',
-      pointBackgroundColor: pointColors,
-      pointBorderColor: pointColors,
-      pointRadius: 6,
-      pointHoverRadius: 9,
-      tension: 0.35,
-      fill: true,
-    }}]
-  }},
-  options: {{
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {{
-      legend: {{ display: false }},
-      tooltip: {{
-        backgroundColor: '#161b22',
-        borderColor: 'rgba(255,255,255,0.1)',
-        borderWidth: 1,
-        titleColor: '#e6edf3',
-        bodyColor: '#8b949e',
-        callbacks: {{
-          afterBody: (items) => {{
-            const i = items[0].dataIndex;
-            return ['Level: ' + (levels[i] || '?')];
+let chartInstance = null;
+
+function levelColor(l, alpha) {{
+  const map = {{
+    HIGH:   `rgba(239,68,68,${{alpha}})`,
+    MEDIUM: `rgba(245,158,11,${{alpha}})`,
+    LOW:    `rgba(34,197,94,${{alpha}})`,
+  }};
+  return map[l] || `rgba(148,163,184,${{alpha}})`;
+}}
+
+function buildChart(theme) {{
+  const isDark  = theme !== 'light';
+  const gridCol = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+  const tickCol = isDark ? '#64748b' : '#94a3b8';
+  const tipBg   = isDark ? '#1e2336' : '#ffffff';
+  const tipBor  = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+  const tipText = isDark ? '#e2e8f0' : '#0f172a';
+  const tipMuted= isDark ? '#94a3b8' : '#64748b';
+
+  const ctx = document.getElementById('riskChart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(ctx, {{
+    type: 'line',
+    data: {{
+      labels,
+      datasets: [{{
+        label: 'Risk Score',
+        data: scores,
+        borderColor: '#6366f1',
+        backgroundColor: isDark ? 'rgba(99,102,241,0.07)' : 'rgba(99,102,241,0.06)',
+        pointBackgroundColor: levels.map(l => levelColor(l, 1)),
+        pointBorderColor:     levels.map(l => levelColor(l, 1)),
+        pointRadius: 5,
+        pointHoverRadius: 8,
+        tension: 0.38,
+        fill: true,
+        borderWidth: 2,
+      }}]
+    }},
+    options: {{
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {{
+        legend: {{ display: false }},
+        tooltip: {{
+          backgroundColor: tipBg,
+          borderColor: tipBor,
+          borderWidth: 1,
+          titleColor: tipText,
+          bodyColor: tipMuted,
+          padding: 10,
+          callbacks: {{
+            afterBody: items => ['Level: ' + (levels[items[0].dataIndex] || '?')]
           }}
         }}
-      }}
-    }},
-    scales: {{
-      x: {{
-        ticks: {{ color: '#8b949e', font: {{ family: 'Space Mono', size: 10 }} }},
-        grid:  {{ color: 'rgba(255,255,255,0.04)' }},
       }},
-      y: {{
-        beginAtZero: true,
-        ticks: {{ color: '#8b949e', font: {{ family: 'Space Mono', size: 11 }} }},
-        grid:  {{ color: 'rgba(255,255,255,0.06)' }},
+      scales: {{
+        x: {{
+          ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
+          grid:  {{ color: gridCol }},
+        }},
+        y: {{
+          beginAtZero: true,
+          ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 11 }} }},
+          grid:  {{ color: gridCol }},
+        }}
       }}
     }}
-  }}
+  }});
+}}
+
+function updateChart(theme) {{
+  buildChart(theme);
+}}
+
+// Build chart on load with current resolved theme
+window.addEventListener('load', () => {{
+  const saved = localStorage.getItem('dso-theme') || 'system';
+  const resolved = saved === 'system'
+    ? (MEDIA.matches ? 'dark' : 'light')
+    : saved;
+  buildChart(resolved);
 }});
 </script>
 </body>
-</html>
-"""
+</html>"""
 
 with open("reports/security-report.html", "w") as f:
     f.write(html)
 
-print(f"HTML report written → reports/security-report.html")
+print("Report written → reports/security-report.html")
 sys.exit(exit_code)
