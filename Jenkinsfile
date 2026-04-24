@@ -6,6 +6,7 @@ pipeline {
     string(name: 'WEIGHT_BUGS', defaultValue: '3', description: 'Weight for bugs')
     string(name: 'WEIGHT_VULNS', defaultValue: '5', description: 'Weight for vulnerabilities')
     string(name: 'WEIGHT_HOTSPOTS', defaultValue: '2', description: 'Weight for security hotspots')
+    string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Branch to test')
     choice(
         name: 'MANUAL_PROJECT_TYPE',
         choices: ['auto', 'dotnet', 'java', 'python', 'node', 'cpp'],
@@ -20,6 +21,7 @@ pipeline {
     WEIGHT_BUGS     = "${params.WEIGHT_BUGS ?: '3'}"
     WEIGHT_VULNS    = "${params.WEIGHT_VULNS ?: '5'}"
     WEIGHT_HOTSPOTS = "${params.WEIGHT_HOTSPOTS ?: '2'}"
+    BRANCH_NAME = "${params.BRANCH_NAME ?: 'main'}"
 
     }
     agent any
@@ -27,7 +29,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main',
+                git branch: "${params.BRANCH_NAME}",
                     credentialsId: 'github-jenkins',
                     url: 'https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline.git'
             }
