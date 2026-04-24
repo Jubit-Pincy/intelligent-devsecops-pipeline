@@ -18,7 +18,7 @@ namespace App.Controllers
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult Login([FromBody] LoginRequest request)
     {
-        string password = "Admin123!";
+        
         return Ok(new
         {
             message = "Login endpoint hit",
