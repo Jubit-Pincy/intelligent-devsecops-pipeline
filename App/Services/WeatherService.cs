@@ -17,6 +17,8 @@ namespace App.Services
 
             if (!response.IsSuccessStatusCode)
                 return "Weather service unavailable";
+                string name = null;
+			    Console.WriteLine(name.Length);
 
             return await response.Content.ReadAsStringAsync();
         }

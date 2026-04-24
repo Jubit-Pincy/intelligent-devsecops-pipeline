@@ -1,0 +1,487 @@
+name: Intelligent Risk-Adaptive DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      weight_bugs:
+        description: 'Weight for Bugs'
+        required: false
+        default: '3'
+      weight_vulns:
+        description: 'Weight for Vulnerabilities'
+        required: false
+        default: '5'
+      weight_hotspots:
+        description: 'Weight for Security Hotspots'
+        required: false
+        default: '2'
+      manual_project_type:
+        description: 'Force project type (auto/dotnet/java/python/node/cpp). Default: auto'
+        required: false
+        default: 'auto'
+
+env:
+  SONAR_URL: https://sonarcloud.io
+  SONAR_ORG: jubit-pincy                     # ← change to your SonarCloud org slug
+  WEIGHT_BUGS:     ${{ github.event.inputs.weight_bugs     || '3' }}
+  WEIGHT_VULNS:    ${{ github.event.inputs.weight_vulns    || '5' }}
+  WEIGHT_HOTSPOTS: ${{ github.event.inputs.weight_hotspots || '2' }}
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # JOB 1 – Detect all project types present in the repository
+  # ─────────────────────────────────────────────────────────────
+  detect:
+    name: Detect Project Types
+    runs-on: ubuntu-latest
+    outputs:
+      types_json:   ${{ steps.detect.outputs.types_json }}   # e.g. ["dotnet","python"]
+      primary_type: ${{ steps.detect.outputs.primary_type }} # first / dominant type
+      deploy_enabled: ${{ steps.detect.outputs.deploy_enabled }}
+      project_key:  ${{ steps.detect.outputs.project_key }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect project composition
+        id: detect
+        shell: bash
+        run: |
+          MANUAL="${{ github.event.inputs.manual_project_type || 'auto' }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          echo "project_key=${REPO_NAME}" >> "$GITHUB_OUTPUT"
+
+          if [ "$MANUAL" != "auto" ]; then
+            echo "types_json=[\"${MANUAL}\"]"  >> "$GITHUB_OUTPUT"
+            echo "primary_type=${MANUAL}"       >> "$GITHUB_OUTPUT"
+            echo "deploy_enabled=true"          >> "$GITHUB_OUTPUT"
+            echo "Manual override → ${MANUAL}"
+            exit 0
+          fi
+
+          TYPES=()
+
+          # ── .NET ──────────────────────────────────────────────
+          if find . -maxdepth 5 -name "*.csproj" \
+               -not -path "*/bin/*" -not -path "*/obj/*" \
+               | grep -q .; then
+            TYPES+=("dotnet")
+            echo "Detected: .NET"
+          fi
+
+          # ── Java / Maven / Gradle ─────────────────────────────
+          if [ -f "pom.xml" ] || find . -maxdepth 3 -name "build.gradle" | grep -q .; then
+            TYPES+=("java")
+            echo "Detected: Java"
+          fi
+
+          # ── Python ────────────────────────────────────────────
+          if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || \
+             [ -f "setup.py" ]         || [ -f "Pipfile" ] || \
+             find . -maxdepth 5 -name "*.py" -not -path "./.git/*" | grep -q .; then
+            TYPES+=("python")
+            echo "Detected: Python"
+          fi
+
+          # ── Node / React / Vue / Next / Angular ───────────────
+          if [ -f "package.json" ]; then
+            TYPES+=("node")
+            echo "Detected: Node.js (JS/TS/React/Vue/Angular/Next…)"
+          fi
+
+          # ── C / C++ ───────────────────────────────────────────
+          if [ -f "CMakeLists.txt" ] || [ -f "Makefile" ] || \
+             find . -maxdepth 5 \( -name "*.cpp" -o -name "*.c" \) \
+               -not -path "./.git/*" | grep -q .; then
+            TYPES+=("cpp")
+            echo "Detected: C/C++"
+          fi
+
+          # ── Go ────────────────────────────────────────────────
+          if [ -f "go.mod" ] || find . -maxdepth 5 -name "*.go" \
+               -not -path "./.git/*" | grep -q .; then
+            TYPES+=("go")
+            echo "Detected: Go"
+          fi
+
+          # ── Ruby ──────────────────────────────────────────────
+          if [ -f "Gemfile" ] || find . -maxdepth 5 -name "*.rb" \
+               -not -path "./.git/*" | grep -q .; then
+            TYPES+=("ruby")
+            echo "Detected: Ruby"
+          fi
+
+          # ── PHP ───────────────────────────────────────────────
+          if [ -f "composer.json" ] || find . -maxdepth 5 -name "*.php" \
+               -not -path "./.git/*" | grep -q .; then
+            TYPES+=("php")
+            echo "Detected: PHP"
+          fi
+
+          # ── Rust ──────────────────────────────────────────────
+          if [ -f "Cargo.toml" ]; then
+            TYPES+=("rust")
+            echo "Detected: Rust"
+          fi
+
+          if [ ${#TYPES[@]} -eq 0 ]; then
+            echo "::error::No recognisable project files found."
+            exit 1
+          fi
+
+          # Build JSON array for the matrix
+          JSON="["
+          for i in "${!TYPES[@]}"; do
+            [ $i -gt 0 ] && JSON+=","
+            JSON+="\"${TYPES[$i]}\""
+          done
+          JSON+="]"
+
+          PRIMARY="${TYPES[0]}"
+          DEPLOY="false"
+          if [ -f "Dockerfile" ]; then
+            DEPLOY="true"
+          fi
+
+          echo "types_json=${JSON}"      >> "$GITHUB_OUTPUT"
+          echo "primary_type=${PRIMARY}" >> "$GITHUB_OUTPUT"
+          echo "deploy_enabled=${DEPLOY}" >> "$GITHUB_OUTPUT"
+
+          echo ""
+          echo "──────────────────────────────────"
+          echo " Detected types : ${TYPES[*]}"
+          echo " Primary type   : ${PRIMARY}"
+          echo " Deploy enabled : ${DEPLOY}"
+          echo "──────────────────────────────────"
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 2 – Build every detected language (matrix)
+  # ─────────────────────────────────────────────────────────────
+  build:
+    name: Build (${{ matrix.project_type }})
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project_type: ${{ fromJson(needs.detect.outputs.types_json) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── .NET ──────────────────────────────────────────────────
+      - name: Setup .NET
+        if: matrix.project_type == 'dotnet'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build .NET
+        if: matrix.project_type == 'dotnet'
+        run: dotnet build --configuration Release
+
+      # ── Java ──────────────────────────────────────────────────
+      - name: Setup Java
+        if: matrix.project_type == 'java'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build Java (Maven)
+        if: matrix.project_type == 'java' && hashFiles('pom.xml') != ''
+        run: mvn clean install -DskipTests
+
+      - name: Build Java (Gradle)
+        if: matrix.project_type == 'java' && hashFiles('build.gradle') != ''
+        run: ./gradlew build -x test
+
+      # ── Python ────────────────────────────────────────────────
+      - name: Setup Python
+        if: matrix.project_type == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python deps
+        if: matrix.project_type == 'python'
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f Pipfile ];          then pip install pipenv && pipenv install; fi
+
+      # ── Node / JS / TS / React / Vue / Next ───────────────────
+      - name: Setup Node
+        if: matrix.project_type == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node deps
+        if: matrix.project_type == 'node'
+        run: npm ci --prefer-offline
+
+      # ── Go ────────────────────────────────────────────────────
+      - name: Setup Go
+        if: matrix.project_type == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build Go
+        if: matrix.project_type == 'go'
+        run: go build ./...
+
+      # ── Ruby ──────────────────────────────────────────────────
+      - name: Setup Ruby
+        if: matrix.project_type == 'ruby'
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      # ── PHP ───────────────────────────────────────────────────
+      - name: Setup PHP
+        if: matrix.project_type == 'php'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      - name: Install PHP deps
+        if: matrix.project_type == 'php' && hashFiles('composer.json') != ''
+        run: composer install --no-interaction
+
+      # ── Rust ──────────────────────────────────────────────────
+      - name: Setup Rust
+        if: matrix.project_type == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust
+        if: matrix.project_type == 'rust'
+        run: cargo build --release
+
+      # ── C/C++ ─────────────────────────────────────────────────
+      - name: Build C/C++ (CMake)
+        if: matrix.project_type == 'cpp' && hashFiles('CMakeLists.txt') != ''
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 3 – Single SonarCloud scan covering the entire repo
+  #          (runs once; SonarCloud handles polyglot natively)
+  # ─────────────────────────────────────────────────────────────
+  sonar:
+    name: SonarCloud Analysis
+    needs: [detect, build]
+    runs-on: ubuntu-latest
+    outputs:
+      task_id: ${{ steps.parse_task.outputs.task_id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # required for blame / new-code detection
+
+      - name: Setup Java (SonarScanner needs JRE)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup .NET (if dotnet detected)
+        if: contains(needs.detect.outputs.types_json, 'dotnet')
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # ── SonarCloud scan ───────────────────────────────────────
+      # For .NET we use the MSBuild scanner; for everything else
+      # we use the universal SonarScanner CLI.
+      - name: SonarCloud scan (.NET path)
+        if: needs.detect.outputs.primary_type == 'dotnet'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          dotnet tool install --global dotnet-sonarscanner
+          dotnet sonarscanner begin \
+            /k:"${{ needs.detect.outputs.project_key }}" \
+            /o:"${{ env.SONAR_ORG }}" \
+            /d:sonar.host.url="${{ env.SONAR_URL }}" \
+            /d:sonar.token="${{ env.SONAR_TOKEN }}"
+          dotnet build --configuration Release
+          dotnet sonarscanner end /d:sonar.token="${{ env.SONAR_TOKEN }}"
+
+      - name: SonarCloud scan (Universal CLI path)
+        if: needs.detect.outputs.primary_type != 'dotnet'
+        uses: SonarSource/sonarcloud-github-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN:  ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ needs.detect.outputs.project_key }}
+            -Dsonar.organization=${{ env.SONAR_ORG }}
+
+      # Parse the task ID so the next job can poll for completion
+      - name: Parse Sonar task ID
+        id: parse_task
+        shell: bash
+        run: |
+          # Universal scanner writes here; .NET writes to .sonarqube/out/.sonar/
+          REPORT=""
+          for f in ".scannerwork/report-task.txt" \
+                   ".sonarqube/out/.sonar/report-task.txt" \
+                   "target/sonar/report-task.txt"; do
+            if [ -f "$f" ]; then REPORT="$f"; break; fi
+          done
+
+          if [ -z "$REPORT" ]; then
+            echo "::warning::report-task.txt not found – polling will be skipped."
+            echo "task_id=" >> "$GITHUB_OUTPUT"
+          else
+            TASK_ID=$(awk -F= '/ceTaskId/{print $2}' "$REPORT")
+            echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
+            echo "Sonar task ID: ${TASK_ID}"
+          fi
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 4 – Wait for SonarCloud background task to finish
+  # ─────────────────────────────────────────────────────────────
+  wait-sonar:
+    name: Wait for Sonar Processing
+    needs: sonar
+    runs-on: ubuntu-latest
+    if: needs.sonar.outputs.task_id != ''
+
+    steps:
+      - name: Poll SonarCloud task status
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          TASK_ID:     ${{ needs.sonar.outputs.task_id }}
+        run: |
+          MAX=30; COUNT=0
+          while [ $COUNT -lt $MAX ]; do
+            STATUS=$(curl -s -u "${SONAR_TOKEN}:" \
+              "${{ env.SONAR_URL }}/api/ce/task?id=${TASK_ID}" \
+              | jq -r '.task.status')
+            echo "[$COUNT/$MAX] Sonar task status: $STATUS"
+
+            case "$STATUS" in
+              SUCCESS)  echo "Analysis complete."; exit 0 ;;
+              FAILED|CANCELED)
+                echo "::error::Sonar analysis ${STATUS}."
+                exit 1 ;;
+            esac
+
+            COUNT=$((COUNT+1))
+            sleep 10
+          done
+          echo "::error::Timed out waiting for Sonar."
+          exit 1
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 5 – Risk Engine + HTML Report
+  # ─────────────────────────────────────────────────────────────
+  risk:
+    name: Risk Evaluation & Report
+    needs: [detect, wait-sonar]
+    runs-on: ubuntu-latest
+    outputs:
+      risk_level: ${{ steps.risk.outputs.risk_level }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install risk-engine deps
+        run: pip install requests
+
+      - name: Run risk analyzer
+        id: risk
+        env:
+          SONAR_TOKEN:     ${{ secrets.SONAR_TOKEN }}
+          PROJECT_KEY:     ${{ needs.detect.outputs.project_key }}
+          SONAR_URL:       ${{ env.SONAR_URL }}
+          WEIGHT_BUGS:     ${{ env.WEIGHT_BUGS }}
+          WEIGHT_VULNS:    ${{ env.WEIGHT_VULNS }}
+          WEIGHT_HOTSPOTS: ${{ env.WEIGHT_HOTSPOTS }}
+          # Pass detected types so report can display them
+          DETECTED_TYPES:  ${{ needs.detect.outputs.types_json }}
+          GITHUB_RUN_URL:  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p reports
+          python3 risk-engine/risk-analyzer.py | tee /tmp/risk_output.txt
+          LEVEL=$(grep "^Risk Level:" /tmp/risk_output.txt | awk '{print $NF}')
+          echo "risk_level=${LEVEL}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-dashboard
+          path: reports/security-report.html
+          retention-days: 30
+
+      - name: Fail if HIGH risk
+        if: steps.risk.outputs.risk_level == 'HIGH'
+        run: |
+          echo "::error::Pipeline blocked – HIGH risk detected."
+          exit 1
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 6 – Conditional Docker deployment
+  # ─────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy Application
+    needs: [detect, risk]
+    runs-on: ubuntu-latest
+    if: |
+      needs.risk.outputs.risk_level != 'HIGH' &&
+      needs.detect.outputs.deploy_enabled == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image & port variables
+        id: vars
+        run: |
+          IMAGE="${{ needs.detect.outputs.project_key }}"
+          IMAGE="${IMAGE,,}"                   # lowercase
+          CONTAINER="${IMAGE}-container"
+          TYPE="${{ needs.detect.outputs.primary_type }}"
+          declare -A PORTS=([dotnet]="8081:8080" [node]="8082:3000"
+                            [python]="8083:5000" [java]="8084:8080")
+          PORT="${PORTS[$TYPE]:-8080:8080}"
+          echo "image=${IMAGE}"         >> "$GITHUB_OUTPUT"
+          echo "container=${CONTAINER}" >> "$GITHUB_OUTPUT"
+          echo "port=${PORT}"           >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
+        run: docker build -t ${{ steps.vars.outputs.image }} .
+
+      - name: Run container
+        run: |
+          docker stop ${{ steps.vars.outputs.container }} 2>/dev/null || true
+          docker rm   ${{ steps.vars.outputs.container }} 2>/dev/null || true
+          docker run -d \
+            -p ${{ steps.vars.outputs.port }} \
+            --name ${{ steps.vars.outputs.container }} \
+            ${{ steps.vars.outputs.image }}
+          docker image prune -f
+
+      - name: Warn on MEDIUM risk
+        if: needs.risk.outputs.risk_level == 'MEDIUM'
+        run: echo "::warning::Deployed with MEDIUM risk – manual security review recommended."
