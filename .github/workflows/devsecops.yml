@@ -451,7 +451,7 @@ jobs:
 
       - name: Upload HTML report
         # actions/upload-artifact v4.6.2
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/download-artifact@v4
         with:
           name: security-dashboard
           path: reports/security-report.html
@@ -529,13 +529,13 @@ jobs:
             docker stop devsecops-api 2>/dev/null || true
             docker rm devsecops-api 2>/dev/null || true
             docker run -d \
-              -p 5000:5000 \
+              -p 5000:8080 \
               -e SONAR_TOKEN="${SONAR_TOKEN}" \
               -e PROJECT_KEY="${PROJECT_KEY}" \
               -e SONAR_URL="${SONAR_URL}" \
               --name devsecops-api \
               devsecops-api:latest
 
-            sleep 5
+            sleep 10
             curl -f http://localhost:5000/api/health || exit 1
             echo "✓ API server running at http://localhost:5000"
