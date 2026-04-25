@@ -9,7 +9,7 @@ COPY . .
 
 # FIX 1: Publish only the main project and RENAME the output to 'app'
 # This removes the need for 'ls' or 'sed' later
-RUN dotnet publish "${PROJECT_NAME}" -c Release -o /app/publish /p:AssemblyName=app
+RUN dotnet publish "${PROJECT_NAME}" -c Release -o /app/publish
 
 # STAGE 2: Runtime
 # Using standard debian-slim for better compatibility with Universal tools
