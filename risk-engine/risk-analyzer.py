@@ -636,8 +636,13 @@ html = f"""<!DOCTYPE html>
 -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"
-        id="chartjsScript"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script>
+// Wait for Chart.js to load
+if (typeof Chart === 'undefined') {{
+  console.error('Chart.js failed to load');
+}}
+</script>
 
 <style>
 /* ═══════════════════════════════════════════════
@@ -1667,8 +1672,53 @@ function applyTheme(saved) {{
   var resolved = resolveTheme(saved);
   document.documentElement.setAttribute('data-theme', resolved);
   syncToggleButtons(saved);
-  rebuildChart(resolved);
-  rebuildLangChart();<script>
+  setTimeout(function() {{
+    rebuildChart(resolved);
+    rebuildLangChart();
+  }}, 100);
+}}
+
+function setTheme(pref) {{
+  try {{ localStorage.setItem('dso-theme', pref); }} catch(e) {{}}
+  applyTheme(pref);
+}}
+
+// Initialize theme on load
+(function() {{
+  var saved = window.__dsoSavedPref || 'dark';
+  syncToggleButtons(saved);
+}})();
+
+MEDIA.addEventListener('change', function() {{
+  var saved = '';
+  try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch(e) {{}}
+  if ((saved || 'system') === 'system') applyTheme('system');
+}});
+
+/* Tabs */
+function switchTab(name, btn) {{
+  document.querySelectorAll('.tab-pane').forEach(function(p) {{
+    p.classList.remove('active');
+  }});
+  document.querySelectorAll('.tab-btn').forEach(function(b) {{
+    b.classList.remove('active');
+  }});
+  var pane = document.getElementById('tab-' + name);
+  if (pane) pane.classList.add('active');
+  btn.classList.add('active');
+}}
+
+/* Fix row toggle */
+function toggleRow(uid) {{
+  var row = document.getElementById(uid);
+  if (!row) return;
+  var trig = row.previousElementSibling;
+  var isOpen = row.classList.contains('open');
+  row.classList.toggle('open', !isOpen);
+  row.style.display = isOpen ? 'none' : 'table-row';
+  if (trig) trig.classList.toggle('expanded', !isOpen);
+}}
+  <script>
 /* ══════════════════════════════════════════════════════
    Theme management
 ══════════════════════════════════════════════════════ */
@@ -2000,15 +2050,21 @@ function rebuildChart(theme) {{
   }}
 }}
  
-(function initChartWhenReady() {{
+// Initialize charts when DOM and Chart.js are ready
+window.addEventListener('load', function() {{
   var MAX_WAIT_MS = 10000;
   var start = Date.now();
   var theme = window.__dsoInitialTheme || 'dark';
- 
+
   function attempt() {{
     if (typeof Chart !== 'undefined') {{
-      buildChart(theme);
-      buildLangChart();
+      try {{
+        buildChart(theme);
+        buildLangChart();
+        console.log('Charts initialized');
+      }} catch(e) {{
+        console.error('Chart init error:', e);
+      }}
       return;
     }}
     if (Date.now() - start > MAX_WAIT_MS) {{

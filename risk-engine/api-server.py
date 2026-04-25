@@ -22,6 +22,7 @@ if not SONAR_TOKEN:
 AUTH = (SONAR_TOKEN, "")
 
 @app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "service": "devsecops-api"}), 200

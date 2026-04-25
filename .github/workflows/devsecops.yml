@@ -536,6 +536,16 @@ jobs:
               --name devsecops-api \
               devsecops-api:latest
 
-            sleep 10
-            curl -f http://localhost:5000/api/health || exit 1
-            echo "✓ API server running at http://localhost:5000"
+            echo "Waiting for API server to start..."
+            for i in {1..30}; do
+              if curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+                echo "✓ API server healthy at http://localhost:5000"
+                exit 0
+              fi
+              echo "Attempt $i/30..."
+              sleep 2
+            done
+            
+            echo "✗ Health check failed"
+            docker logs devsecops-api
+            exit 1
