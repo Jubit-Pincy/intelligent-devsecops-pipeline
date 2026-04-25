@@ -610,22 +610,22 @@ html = f"""<!DOCTYPE html>
 /* Light theme — inverted Obsidian */
 html[data-theme="light"] {{
   color-scheme: light;
-  --bg:         #FFFFFF;
-  --bg2:        #F8F9FA;
-  --bg3:        #F1F3F5;
-  --border:     #DEE2E6;
-  --border2:    #CED4DA;
-  --text:       #000000;
-  --text2:      #000000;
-  --text3:      #000000;
-  --accent:     #212529;
-  --accent-s:   rgba(33, 37, 41, 0.04);
-  --low-fg:     #2D7D46;  --low-bg:  rgba(45, 125, 70, 0.08);
-  --med-fg:     #856404;  --med-bg:  rgba(133, 100, 4, 0.08);
-  --high-fg:    #B00020;  --high-bg: rgba(176, 0, 32, 0.08);
-  --fix-bg:     #F8F9FA;
-  --fix-border: #DEE2E6;
-  --shadow: 0 2px 8px rgba(0,0,0,0.05);
+  --bg:         #F4F4F9;
+  --bg2:        #FFFFFF;
+  --bg3:        #EAE9F2;
+  --border:     #D6D4E5;
+  --border2:    #BEBBD2;
+  --text:       #1A1830;
+  --text2:      #4A4766;
+  --text3:      #797696;
+  --accent:     #5D4EE0;
+  --accent-s:   rgba(93, 78, 224, 0.08);
+  --low-fg:     #1A7B54;  --low-bg:  rgba(26, 123, 84, 0.1);
+  --med-fg:     #B36600;  --med-bg:  rgba(179, 102, 0, 0.1);
+  --high-fg:    #D12A45;  --high-bg: rgba(209, 42, 69, 0.1);
+  --fix-bg:     #FFFFFF;
+  --fix-border: #D6D4E5;
+  --shadow: 0 4px 16px rgba(26, 24, 48, 0.06);
 }}
 
 /* ═══════════════════════════════════════════════
@@ -891,7 +891,7 @@ a:hover {{ color: var(--text); text-decoration: underline; }}
 .r-E {{ color: #FF3B30; }}
 .r-Q {{ color: var(--text3); }}
 .rating-tile .r-lbl {{
-  font-size: 9px;
+  font-size: 12px;
   color: var(--text3);
   text-transform: uppercase;
   letter-spacing: .1em;
