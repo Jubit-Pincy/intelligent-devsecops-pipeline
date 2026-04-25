@@ -588,46 +588,46 @@ html = f"""<!DOCTYPE html>
 ═══════════════════════════════════════════════ */
 :root {{
   color-scheme: dark;
-  --bg:        #000000;
-  --bg2:       #0B0B0B;
-  --bg3:       #111111;
-  --border:    #1F1F1F;
-  --border2:   #2a2a2a;
-  --text:      #FFFFFF;
-  --text2:     #888888;
-  --text3:     #4a4a4a;
-  --accent:    #FFFFFF;
-  --accent-s:  rgba(255,255,255,0.05);
-  --low-fg:    #32D74B;  --low-bg:  rgba(50,215,75,0.09);
-  --med-fg:    #FFD60A;  --med-bg:  rgba(255,214,10,0.09);
-  --high-fg:   #FF3B30;  --high-bg: rgba(255,59,48,0.09);
-  --fix-bg:    #0B0B0B;
-  --fix-border:#1F1F1F;
+  --bg:         #121212;
+  --bg2:        #1E1E1E;
+  --bg3:        #252525;
+  --border:     #2C2C2C;
+  --border2:    #3D3D3D;
+  --text:       #E0E0E0;
+  --text2:      #A0A0A0;
+  --text3:      #666666;
+  --accent:     #E0E0E0;
+  --accent-s:   rgba(224, 224, 224, 0.05);
+  --low-fg:     #81C784;  --low-bg:  rgba(129, 199, 132, 0.1);
+  --med-fg:     #FBC02D;  --med-bg:  rgba(251, 192, 45, 0.1);
+  --high-fg:    #CF6679;  --high-bg: rgba(207, 102, 121, 0.1);
+  --fix-bg:     #1E1E1E;
+  --fix-border: #2C2C2C;
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'Inter', sans-serif;
   --r: 5px;
-  --shadow: 0 1px 6px rgba(0,0,0,0.9);
+  --shadow: 0 4px 12px rgba(0,0,0,0.5);
 }}
 
 /* Light theme — inverted Obsidian */
 html[data-theme="light"] {{
   color-scheme: light;
-  --bg:        #FFFFFF;
-  --bg2:       #F5F5F5;
-  --bg3:       #EBEBEB;
-  --border:    #DDDDDD;
-  --border2:   #CCCCCC;
-  --text:      #000000;
-  --text2:     #555555;
-  --text3:     #AAAAAA;
-  --accent:    #000000;
-  --accent-s:  rgba(0,0,0,0.04);
-  --low-fg:    #1a8a30;  --low-bg:  rgba(26,138,48,0.07);
-  --med-fg:    #927000;  --med-bg:  rgba(146,112,0,0.07);
-  --high-fg:   #cc1500;  --high-bg: rgba(204,21,0,0.07);
-  --fix-bg:    #F0F0F0;
-  --fix-border:#CCCCCC;
-  --shadow: 0 1px 6px rgba(0,0,0,0.07);
+  --bg:         #FFFFFF;
+  --bg2:        #F8F9FA;
+  --bg3:        #F1F3F5;
+  --border:     #DEE2E6;
+  --border2:    #CED4DA;
+  --text:       #212529;
+  --text2:      #495057;
+  --text3:      #ADB5BD;
+  --accent:     #212529;
+  --accent-s:   rgba(33, 37, 41, 0.04);
+  --low-fg:     #2D7D46;  --low-bg:  rgba(45, 125, 70, 0.08);
+  --med-fg:     #856404;  --med-bg:  rgba(133, 100, 4, 0.08);
+  --high-fg:    #B00020;  --high-bg: rgba(176, 0, 32, 0.08);
+  --fix-bg:     #F8F9FA;
+  --fix-border: #DEE2E6;
+  --shadow: 0 2px 8px rgba(0,0,0,0.05);
 }}
 
 /* ═══════════════════════════════════════════════
@@ -809,7 +809,7 @@ a:hover {{ color: var(--text); text-decoration: underline; }}
 }}
 .card-title {{
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: .16em;
   text-transform: uppercase;
