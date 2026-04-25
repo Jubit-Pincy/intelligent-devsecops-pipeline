@@ -502,15 +502,25 @@ jobs:
       runs-on: ubuntu-latest
       if: |
         needs.risk.outputs.risk_level != 'HIGH' &&
-        needs.detect.outputs.deploy_enabled == 'true' &&
-        hashFiles('Dockerfile') != ''
+        needs.detect.outputs.deploy_enabled == 'true' 
 
       steps:
         - name: Checkout
           uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        - name: Check Dockerfile exists
+          id: dockerfile_check
+          run: |
+            if [ -f "Dockerfile" ]; then
+              echo "exists=true" >> $GITHUB_OUTPUT
+            else
+              echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No Dockerfile found - skipping deployment"
+            fi
         - name: Build Docker image
+          if: steps.dockerfile_check.outputs.exists == 'true'
           run: docker build -t devsecops-api:latest .
         - name: Run container
+          if: steps.dockerfile_check.outputs.exists == 'true'
           env:
             SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
             PROJECT_KEY: ${{ needs.detect.outputs.project_key }}
@@ -525,7 +535,7 @@ jobs:
               -e SONAR_URL="${SONAR_URL}" \
               --name devsecops-api \
               devsecops-api:latest
-            
+
             sleep 5
             curl -f http://localhost:5000/api/health || exit 1
             echo "✓ API server running at http://localhost:5000"
