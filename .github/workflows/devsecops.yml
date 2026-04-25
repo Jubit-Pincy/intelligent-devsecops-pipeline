@@ -250,10 +250,9 @@ jobs:
       - name: Setup Ruby
         if: matrix.project_type == 'ruby'
         # ruby/setup-ruby v1.237.0
-        uses: ruby/setup-ruby@354a1ad156761f5ee2b7b13fa8e09943a9e151d0
+        uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true
-
       # ── PHP ───────────────────────────────────────────────────
       - name: Setup PHP
         if: matrix.project_type == 'php'
