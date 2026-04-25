@@ -12,6 +12,9 @@ Fixes in this version:
   • Line number now read from textRange.startLine (fixes dash issue)
   • Remediation guidance per issue type / rule
   • Polyglot-aware, full issue detail tables
+  • FIXED: Font Awesome icons now use fas (solid) — fa-regular requires FA Pro
+  • FIXED: Theme toggle emojis replaced with FA solid icons (fa-sun, fa-moon, fa-circle-half-stroke)
+  • FIXED: Color scheme updated to Obsidian Minimalist Palette
 """
 
 from datetime import datetime, timezone, timedelta
@@ -36,7 +39,6 @@ try:
 except Exception:
     DETECTED_TYPES = [_raw_types]
 
-# Fallback: read project key from report-task.txt (Jenkins / local CLI)
 def _key_from_report():
     for path in (
         ".sonarqube/out/.sonar/report-task.txt",
@@ -98,11 +100,6 @@ def fetch_summary_metrics():
     return result
 
 def fetch_issues(issue_types, ps=10, statuses=None):
-    """
-    Fetch issues from SonarCloud.
-    statuses: comma-separated string e.g. "OPEN,CONFIRMED,REOPENED" or "RESOLVED,CLOSED"
-    When statuses is None the API returns its default (open issues only).
-    """
     params = {
         "componentKeys": PROJECT_KEY,
         "types": issue_types,
@@ -133,10 +130,6 @@ def fetch_hotspots(ps=10):
         return []
 
 def get_line(issue: dict) -> str:
-    """
-    SonarCloud issues may carry the line number in different fields.
-    Priority: issue.line  →  textRange.startLine  →  'N/A'
-    """
     line = issue.get("line")
     if line is not None:
         return str(line)
@@ -147,9 +140,7 @@ def get_line(issue: dict) -> str:
     return "N/A"
 
 def get_file(issue: dict) -> str:
-    """Extract just the file path portion from the component key."""
     comp = issue.get("component", "")
-    # component is typically "projectKey:path/to/File.java"
     parts = comp.split(":", 1)
     if len(parts) == 2:
         return parts[1]
@@ -222,10 +213,6 @@ elif risk_score < prev:
 else:
     trend = "→ Stable"
 
-# ── Back-fill missing "level" on old history entries ──────────────
-# Older versions of the script didn't always save "level". Without it,
-# the chart pointBackgroundColor lookup returns grey and the tooltip
-# shows "?" for every run except the most recent ones.
 def _infer_level(score):
     if score <= 2:   return "LOW"
     if score <= 5:   return "MEDIUM"
@@ -320,20 +307,21 @@ def get_advice(rule: str, issue_type: str) -> tuple:
 # ─────────────────────────────────────────────────
 # HTML rendering helpers
 # ─────────────────────────────────────────────────
+# Obsidian Minimalist colors for severity badges
 SEV_META = {
-    "BLOCKER":  ("#dc2626", "#fef2f2", "#fee2e2"),
-    "CRITICAL": ("#ea580c", "#fff7ed", "#fed7aa"),
-    "MAJOR":    ("#ca8a04", "#fefce8", "#fef08a"),
-    "MINOR":    ("#2563eb", "#eff6ff", "#bfdbfe"),
-    "INFO":     ("#6b7280", "#f9fafb", "#e5e7eb"),
-    "HIGH":     ("#dc2626", "#fef2f2", "#fee2e2"),
-    "MEDIUM":   ("#ca8a04", "#fefce8", "#fef08a"),
-    "LOW":      ("#2563eb", "#eff6ff", "#bfdbfe"),
+    "BLOCKER":  ("#FF3B30", "#1a0000", "#3a0000"),
+    "CRITICAL": ("#FF3B30", "#1a0000", "#3a0000"),
+    "MAJOR":    ("#FFD60A", "#1a1500", "#3a2e00"),
+    "MINOR":    ("#888888", "#111111", "#1F1F1F"),
+    "INFO":     ("#888888", "#111111", "#1F1F1F"),
+    "HIGH":     ("#FF3B30", "#1a0000", "#3a0000"),
+    "MEDIUM":   ("#FFD60A", "#1a1500", "#3a2e00"),
+    "LOW":      ("#32D74B", "#001a05", "#003a0d"),
 }
 
 def sev_badge(sev: str) -> str:
     s = (sev or "INFO").upper()
-    fg, _, _ = SEV_META.get(s, ("#6b7280", "#f9fafb", "#e5e7eb"))
+    fg, _, _ = SEV_META.get(s, ("#888888", "#111111", "#1F1F1F"))
     return f'<span class="badge" style="--badge-fg:{fg};">{s}</span>'
 
 _row_counter = [0]
@@ -347,13 +335,10 @@ def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
     sev        = issue.get("severity", "INFO")
     rule       = issue.get("rule", "")
     status     = issue.get("status", "OPEN")
-    resolution = issue.get("resolution", "")   # FIXED, FALSE-POSITIVE, WONTFIX, etc.
+    resolution = issue.get("resolution", "")
     line       = get_line(issue)
     file       = get_file(issue)
 
-    # ── SonarCloud deep-link ─────────────────────────────────────
-    # For closed/resolved issues we pass the statuses filter so the
-    # page shows the resolved view rather than the active-issues view.
     if is_closed:
         link = (f"{SONAR_URL}/project/issues?id={PROJECT_KEY}"
                 f"&open={key}&statuses={status}&resolved=true")
@@ -363,24 +348,24 @@ def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
     adv_title, adv_body = get_advice(rule, itype)
     display_file = file.split("/")[-1] if file else "—"
 
-    # Resolution pill (only for closed rows)
     res_html = ""
     if resolution:
         res_color = {
-            "FIXED":         "#22c55e",
-            "FALSE-POSITIVE":"#6366f1",
-            "WONTFIX":       "#f59e0b",
-            "REMOVED":       "#64748b",
-        }.get(resolution.upper(), "#64748b")
+            "FIXED":         "#32D74B",
+            "FALSE-POSITIVE":"#888888",
+            "WONTFIX":       "#FFD60A",
+            "REMOVED":       "#888888",
+        }.get(resolution.upper(), "#888888")
         res_html = (f'<span class="res-chip" style="--res-fg:{res_color};">'
                     f'{resolution}</span>')
 
+    # FIX: use fas (solid) — fa-regular requires Font Awesome Pro
     return f"""
 <tr class="issue-row{'  closed-row' if is_closed else ''}" onclick="toggleRow('{uid}')">
   <td class="td-file">
     <a href="{link}" target="_blank" onclick="event.stopPropagation()"
        class="loc-link" title="{file}">{display_file}</a>
-    <span class="line-chip"><i class="fa-regular fa-code-branch"></i> L{line}</span>
+    <span class="line-chip"><i class="fas fa-code-branch"></i> L{line}</span>
   </td>
   <td class="td-path" title="{file}">{file}</td>
   <td class="td-msg">{msg}</td>
@@ -392,11 +377,11 @@ def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
 <tr id="{uid}" class="fix-row" style="display:none;">
   <td colspan="7" class="fix-cell">
     <div class="fix-inner">
-      <div class="fix-title"><i class="fa-regular fa-screwdriver-wrench"></i> {adv_title}</div>
+      <div class="fix-title"><i class="fas fa-screwdriver-wrench"></i> {adv_title}</div>
       <div class="fix-body">{adv_body}</div>
       <a href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}"
          target="_blank" class="fix-rule-link">
-        <i class="fa-regular fa-arrow-up-right-from-square"></i> View rule documentation
+        <i class="fas fa-arrow-up-right-from-square"></i> View rule documentation
       </a>
     </div>
   </td>
@@ -413,8 +398,6 @@ def hotspot_row(hs: dict) -> str:
     line     = get_line(hs)
     file     = get_file(hs)
 
-    # ── Corrected SonarCloud hotspot deep-link ─────────────────
-    # Format: /project/security_hotspots?id=PROJECT_KEY&hotspots=HOTSPOT_KEY
     link = f"{SONAR_URL}/project/security_hotspots?id={PROJECT_KEY}&hotspots={key}"
 
     adv_title, adv_body = get_advice(rule, "HOTSPOT")
@@ -425,7 +408,7 @@ def hotspot_row(hs: dict) -> str:
   <td class="td-file">
     <a href="{link}" target="_blank" onclick="event.stopPropagation()"
        class="loc-link" title="{file}">{display_file}</a>
-    <span class="line-chip"><i class="fa-regular fa-code-branch"></i> L{line}</span>
+    <span class="line-chip"><i class="fas fa-code-branch"></i> L{line}</span>
   </td>
   <td class="td-path" title="{file}">{file}</td>
   <td class="td-msg">{msg}</td>
@@ -437,11 +420,11 @@ def hotspot_row(hs: dict) -> str:
 <tr id="{uid}" class="fix-row" style="display:none;">
   <td colspan="7" class="fix-cell">
     <div class="fix-inner">
-      <div class="fix-title"><i class="fa-regular fa-screwdriver-wrench"></i> {adv_title}</div>
+      <div class="fix-title"><i class="fas fa-screwdriver-wrench"></i> {adv_title}</div>
       <div class="fix-body">{adv_body}</div>
       <a href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}"
          target="_blank" class="fix-rule-link">
-        <i class="fa-regular fa-arrow-up-right-from-square"></i> View rule documentation
+        <i class="fas fa-arrow-up-right-from-square"></i> View rule documentation
       </a>
     </div>
   </td>
@@ -473,7 +456,7 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
     <tbody>{"".join(rows_html)}</tbody>
   </table>
   <p class="table-note">
-    <i class="fa-regular fa-circle-info"></i>
+    <i class="fas fa-circle-info"></i>
     Click a row to expand remediation guidance. File links open directly in SonarCloud.
   </p>
 </div>"""
@@ -486,7 +469,7 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
         closed_block = f"""
 <details class="closed-section">
   <summary class="closed-summary">
-    <i class="fa-regular fa-circle-check"></i>
+    <i class="fas fa-circle-check"></i>
     <span>Closed / Resolved {empty_label.title()}</span>
     <span class="closed-count">{n}</span>
   </summary>
@@ -496,7 +479,7 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
       <tbody>{"".join(closed_rows_html)}</tbody>
     </table>
     <p class="table-note">
-      <i class="fa-regular fa-circle-info"></i>
+      <i class="fas fa-circle-info"></i>
       These issues were resolved in SonarCloud. Links open the issue record directly.
     </p>
   </div>
@@ -528,11 +511,12 @@ type_pills = "".join(
 RISK_CSS_CLASS = {"LOW": "risk-low", "MEDIUM": "risk-med", "HIGH": "risk-high"}
 risk_cls = RISK_CSS_CLASS.get(level, "risk-low")
 
+# FIX: fas (solid) classes — fa-regular requires Font Awesome Pro
 decision_icon_cls = {
-    "HIGH":   "fa-regular fa-circle-xmark",
-    "MEDIUM": "fa-regular fa-triangle-exclamation",
-    "LOW":    "fa-regular fa-circle-check",
-}.get(level, "fa-regular fa-circle-check")
+    "HIGH":   "fas fa-circle-xmark",
+    "MEDIUM": "fas fa-triangle-exclamation",
+    "LOW":    "fas fa-circle-check",
+}.get(level, "fas fa-circle-check")
 
 if level == "HIGH":
     summary_txt = (f"Build blocked: {vulns_count} vulnerabilities, {bugs_count} bugs, "
@@ -560,15 +544,13 @@ html = f"""<!DOCTYPE html>
 
 <!--
   THEME BOOTSTRAP — runs synchronously before any paint.
-  This eliminates the flash-of-wrong-theme in Jenkins / static file viewers
-  because the <html data-theme="..."> attribute is set BEFORE the browser
-  renders any CSS that depends on it.
+  Applies data-theme before first CSS render — eliminates flash of wrong theme.
 -->
 <script>
 (function () {{
   var saved = '';
   try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch (e) {{}}
-  if (!saved) saved = 'dark';           // sensible default
+  if (!saved) saved = 'dark';
   var resolved = saved;
   if (saved === 'system') {{
     try {{
@@ -577,7 +559,6 @@ html = f"""<!DOCTYPE html>
     }} catch (e) {{ resolved = 'dark'; }}
   }}
   document.documentElement.setAttribute('data-theme', resolved);
-  // Store resolved for the chart init that runs later
   window.__dsoInitialTheme = resolved;
   window.__dsoSavedPref    = saved;
 }})();
@@ -585,59 +566,68 @@ html = f"""<!DOCTYPE html>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-<!-- Font Awesome 6 Free (outline / regular icons) -->
+
+<!--
+  Font Awesome 6 Free — provides fas (solid) and fab (brands).
+  NOTE: fa-regular (outline) icons require Font Awesome Pro.
+  All icons in this report use "fas" prefix to work with the free CDN.
+-->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+      integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W=="
       crossorigin="anonymous" referrerpolicy="no-referrer">
-<!-- Chart.js loaded with a stable integrity hash; onload/onerror handled in JS -->
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"
         id="chartjsScript"></script>
 
 <style>
 /* ═══════════════════════════════════════════════
-   Design tokens — dark (default)
+   Design tokens — Obsidian Minimalist (dark default)
+   Core:    #000000 bg · #0B0B0B containers · #1F1F1F borders
+            #FFFFFF text · #888888 sub-text
+   Status:  #FF3B30 danger · #FFD60A warning · #32D74B success
 ═══════════════════════════════════════════════ */
 :root {{
   color-scheme: dark;
-  --bg:        #0f1117;
-  --bg2:       #161a24;
-  --bg3:       #1e2336;
-  --border:    rgba(255,255,255,0.07);
-  --border2:   rgba(255,255,255,0.12);
-  --text:      #e2e8f0;
-  --text2:     #94a3b8;
-  --text3:     #64748b;
-  --accent:    #6366f1;
-  --accent-s:  rgba(99,102,241,0.15);
-  --low-fg:    #22c55e;  --low-bg:  rgba(34,197,94,0.12);
-  --med-fg:    #f59e0b;  --med-bg:  rgba(245,158,11,0.12);
-  --high-fg:   #ef4444;  --high-bg: rgba(239,68,68,0.12);
-  --fix-bg:    #131a2a;
-  --fix-border:#2d3a55;
+  --bg:        #000000;
+  --bg2:       #0B0B0B;
+  --bg3:       #111111;
+  --border:    #1F1F1F;
+  --border2:   #2a2a2a;
+  --text:      #FFFFFF;
+  --text2:     #888888;
+  --text3:     #4a4a4a;
+  --accent:    #FFFFFF;
+  --accent-s:  rgba(255,255,255,0.05);
+  --low-fg:    #32D74B;  --low-bg:  rgba(50,215,75,0.09);
+  --med-fg:    #FFD60A;  --med-bg:  rgba(255,214,10,0.09);
+  --high-fg:   #FF3B30;  --high-bg: rgba(255,59,48,0.09);
+  --fix-bg:    #0B0B0B;
+  --fix-border:#1F1F1F;
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'Inter', sans-serif;
-  --r: 10px;
-  --shadow: 0 2px 12px rgba(0,0,0,0.35);
+  --r: 5px;
+  --shadow: 0 1px 6px rgba(0,0,0,0.9);
 }}
 
-/* Light theme */
+/* Light theme — inverted Obsidian */
 html[data-theme="light"] {{
   color-scheme: light;
-  --bg:        #f8fafc;
-  --bg2:       #ffffff;
-  --bg3:       #f1f5f9;
-  --border:    rgba(0,0,0,0.07);
-  --border2:   rgba(0,0,0,0.12);
-  --text:      #0f172a;
-  --text2:     #475569;
-  --text3:     #94a3b8;
-  --accent:    #4f46e5;
-  --accent-s:  rgba(79,70,229,0.08);
-  --low-fg:    #16a34a;  --low-bg:  rgba(22,163,74,0.08);
-  --med-fg:    #d97706;  --med-bg:  rgba(217,119,6,0.08);
-  --high-fg:   #dc2626;  --high-bg: rgba(220,38,38,0.08);
-  --fix-bg:    #f0f4ff;
-  --fix-border:#c7d2fe;
-  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --bg:        #FFFFFF;
+  --bg2:       #F5F5F5;
+  --bg3:       #EBEBEB;
+  --border:    #DDDDDD;
+  --border2:   #CCCCCC;
+  --text:      #000000;
+  --text2:     #555555;
+  --text3:     #AAAAAA;
+  --accent:    #000000;
+  --accent-s:  rgba(0,0,0,0.04);
+  --low-fg:    #1a8a30;  --low-bg:  rgba(26,138,48,0.07);
+  --med-fg:    #927000;  --med-bg:  rgba(146,112,0,0.07);
+  --high-fg:   #cc1500;  --high-bg: rgba(204,21,0,0.07);
+  --fix-bg:    #F0F0F0;
+  --fix-border:#CCCCCC;
+  --shadow: 0 1px 6px rgba(0,0,0,0.07);
 }}
 
 /* ═══════════════════════════════════════════════
@@ -652,11 +642,11 @@ body {{
   font-size: 14px;
   line-height: 1.6;
   min-height: 100vh;
-  transition: background .25s, color .25s;
+  transition: background .2s, color .2s;
 }}
 
-a {{ color: var(--accent); text-decoration: none; }}
-a:hover {{ text-decoration: underline; }}
+a {{ color: var(--text2); text-decoration: none; }}
+a:hover {{ color: var(--text); text-decoration: underline; }}
 
 /* ═══════════════════════════════════════════════
    Top nav
@@ -667,49 +657,58 @@ a:hover {{ text-decoration: underline; }}
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 28px; height: 52px;
-  backdrop-filter: blur(10px);
 }}
 .nav-brand {{
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--text);
   display: flex; align-items: center; gap: 10px;
-  letter-spacing: .04em;
+  letter-spacing: .1em;
+  text-transform: uppercase;
 }}
 .status-dot {{
-  width: 7px; height: 7px; border-radius: 50%;
+  width: 6px; height: 6px; border-radius: 50%;
   animation: pulse 2.4s ease-in-out infinite;
+  flex-shrink: 0;
 }}
-.status-dot.risk-low  {{ background: var(--low-fg);  box-shadow: 0 0 6px var(--low-fg); }}
-.status-dot.risk-med  {{ background: var(--med-fg);  box-shadow: 0 0 6px var(--med-fg); }}
-.status-dot.risk-high {{ background: var(--high-fg); box-shadow: 0 0 6px var(--high-fg); }}
+.status-dot.risk-low  {{ background: var(--low-fg); }}
+.status-dot.risk-med  {{ background: var(--med-fg); }}
+.status-dot.risk-high {{ background: var(--high-fg); }}
 @keyframes pulse {{
   0%, 100% {{ opacity: 1; transform: scale(1); }}
-  50%       {{ opacity: .5; transform: scale(1.4); }}
+  50%       {{ opacity: .35; transform: scale(1.6); }}
 }}
-.nav-right {{ display: flex; align-items: center; gap: 8px; }}
-.nav-ts {{ font-family: var(--mono); font-size: 11px; color: var(--text3); }}
+.nav-right {{ display: flex; align-items: center; gap: 12px; }}
+.nav-ts {{ font-family: var(--mono); font-size: 10px; color: var(--text3); letter-spacing: .04em; }}
 
-/* Theme toggle */
+/* Theme toggle — Font Awesome solid icons (no emojis) */
 .theme-toggle {{
   display: flex;
   background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
   overflow: hidden;
   padding: 2px; gap: 2px;
 }}
 .theme-btn {{
   background: none; border: none;
-  padding: 5px 10px; cursor: pointer;
-  border-radius: 6px; font-size: 13px;
+  padding: 0; cursor: pointer;
+  border-radius: 4px; font-size: 12px;
   color: var(--text3);
-  transition: background .15s, color .15s;
+  transition: background .12s, color .12s;
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 26px;
+  flex-shrink: 0;
 }}
+.theme-btn i {{ pointer-events: none; font-size: 12px; }}
 .theme-btn.active {{
-  background: var(--accent);
-  color: #fff;
+  background: var(--text);
+  color: var(--bg);
+}}
+.theme-btn:not(.active):hover {{
+  color: var(--text2);
+  background: var(--border);
 }}
 
 /* ═══════════════════════════════════════════════
@@ -723,30 +722,37 @@ a:hover {{ text-decoration: underline; }}
 }}
 .hero-title {{
   font-family: var(--mono);
-  font-size: clamp(18px, 3vw, 28px);
+  font-size: clamp(15px, 2.5vw, 22px);
   font-weight: 600;
   color: var(--text);
-  letter-spacing: -.02em;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   margin-bottom: 4px;
 }}
-.hero-sub {{ color: var(--text2); font-size: 13px; margin-bottom: 18px; }}
+.hero-sub {{
+  color: var(--text3);
+  font-size: 11px;
+  margin-bottom: 18px;
+  font-family: var(--mono);
+  letter-spacing: .04em;
+}}
 .type-pills {{ display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 32px; }}
 .type-pill {{
-  background: var(--accent-s);
-  color: var(--accent);
-  border: 1px solid rgba(99,102,241,0.2);
-  border-radius: 20px;
-  padding: 3px 13px;
+  background: transparent;
+  color: var(--text3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 10px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: .06em;
+  letter-spacing: .1em;
 }}
 .score-ring {{
   display: inline-flex; flex-direction: column; align-items: center;
   padding: 28px 56px;
-  border-radius: 16px;
-  border-width: 1.5px; border-style: solid;
+  border-radius: var(--r);
+  border-width: 1px; border-style: solid;
   margin-bottom: 16px;
 }}
 .score-ring.risk-low  {{ background: var(--low-bg);  border-color: var(--low-fg);  }}
@@ -762,11 +768,12 @@ a:hover {{ text-decoration: underline; }}
 .score-ring.risk-med  .score-num {{ color: var(--med-fg);  }}
 .score-ring.risk-high .score-num {{ color: var(--high-fg); }}
 .score-lbl {{
-  font-size: 10px;
-  letter-spacing: .12em;
-  margin-top: 5px;
+  font-size: 9px;
+  letter-spacing: .18em;
+  margin-top: 6px;
   opacity: .65;
   text-transform: uppercase;
+  font-family: var(--mono);
 }}
 .score-ring.risk-low  .score-lbl {{ color: var(--low-fg);  }}
 .score-ring.risk-med  .score-lbl {{ color: var(--med-fg);  }}
@@ -774,12 +781,13 @@ a:hover {{ text-decoration: underline; }}
 .level-badge {{
   display: inline-block;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: .1em;
-  padding: 5px 20px;
-  border-radius: 20px;
+  letter-spacing: .16em;
+  padding: 4px 18px;
+  border-radius: 3px;
   border-width: 1px; border-style: solid;
+  text-transform: uppercase;
 }}
 .level-badge.risk-low  {{ color: var(--low-fg);  background: var(--low-bg);  border-color: var(--low-fg);  }}
 .level-badge.risk-med  {{ color: var(--med-fg);  background: var(--med-bg);  border-color: var(--med-fg);  }}
@@ -788,33 +796,33 @@ a:hover {{ text-decoration: underline; }}
 /* ═══════════════════════════════════════════════
    Page layout
 ═══════════════════════════════════════════════ */
-.page {{ max-width: 1280px; margin: 0 auto; padding: 28px 20px 60px; }}
+.page {{ max-width: 1280px; margin: 0 auto; padding: 24px 20px 60px; }}
 
 .card {{
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: var(--r);
-  padding: 24px;
-  margin-bottom: 20px;
+  padding: 22px;
+  margin-bottom: 14px;
   box-shadow: var(--shadow);
-  transition: background .25s, border-color .25s;
+  transition: background .2s, border-color .2s;
 }}
 .card-title {{
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: .1em;
+  letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--text3);
   margin-bottom: 18px;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 10px;
 }}
 .card-title::before {{
   content: '';
   display: block;
-  width: 3px; height: 14px;
-  border-radius: 2px;
-  background: var(--accent);
+  width: 2px; height: 10px;
+  border-radius: 1px;
+  background: var(--text3);
   flex-shrink: 0;
 }}
 
@@ -824,19 +832,19 @@ a:hover {{ text-decoration: underline; }}
 .metric-grid {{
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 10px;
+  margin-bottom: 14px;
 }}
 .metric-tile {{
   background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r);
   padding: 18px 14px;
   text-align: center;
-  transition: border-color .2s, transform .2s;
+  transition: border-color .12s;
   cursor: default;
 }}
-.metric-tile:hover {{ border-color: var(--border2); transform: translateY(-1px); }}
+.metric-tile:hover {{ border-color: var(--border2); }}
 .metric-tile .m-val {{
   font-family: var(--mono);
   font-size: 30px;
@@ -844,27 +852,28 @@ a:hover {{ text-decoration: underline; }}
   line-height: 1;
   margin-bottom: 5px;
 }}
-.m-bug   {{ color: #ef4444; }}
-.m-vuln  {{ color: #f97316; }}
-.m-spot  {{ color: #a855f7; }}
-.m-smell {{ color: #f59e0b; }}
-.m-cov   {{ color: var(--accent); }}
+.m-bug   {{ color: #FF3B30; }}
+.m-vuln  {{ color: #FF3B30; }}
+.m-spot  {{ color: #FFD60A; }}
+.m-smell {{ color: #888888; }}
+.m-cov   {{ color: #32D74B; }}
 .m-dup   {{ color: var(--text3); }}
 .metric-tile .m-lbl {{
-  font-size: 11px;
+  font-size: 9px;
   color: var(--text3);
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: .1em;
+  font-family: var(--mono);
 }}
 .rating-row {{
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
+  gap: 10px;
 }}
 .rating-tile {{
   background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r);
   padding: 14px;
   text-align: center;
 }}
@@ -873,18 +882,19 @@ a:hover {{ text-decoration: underline; }}
   font-size: 26px;
   font-weight: 600;
 }}
-.r-A {{ color: #22c55e; }}
-.r-B {{ color: #86efac; }}
-.r-C {{ color: #f59e0b; }}
-.r-D {{ color: #f97316; }}
-.r-E {{ color: #ef4444; }}
+.r-A {{ color: #32D74B; }}
+.r-B {{ color: #32D74B; }}
+.r-C {{ color: #FFD60A; }}
+.r-D {{ color: #FF3B30; }}
+.r-E {{ color: #FF3B30; }}
 .r-Q {{ color: var(--text3); }}
 .rating-tile .r-lbl {{
-  font-size: 11px;
+  font-size: 9px;
   color: var(--text3);
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: .1em;
   margin-top: 3px;
+  font-family: var(--mono);
 }}
 
 /* ═══════════════════════════════════════════════
@@ -892,22 +902,26 @@ a:hover {{ text-decoration: underline; }}
 ═══════════════════════════════════════════════ */
 .decision-banner {{
   display: flex; align-items: flex-start; gap: 16px;
-  padding: 18px 20px;
-  border-radius: 8px;
+  padding: 16px 18px;
+  border-radius: var(--r);
   border-width: 1px; border-style: solid;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }}
 .decision-banner.risk-low  {{ background: var(--low-bg);  border-color: var(--low-fg);  }}
 .decision-banner.risk-med  {{ background: var(--med-bg);  border-color: var(--med-fg);  }}
 .decision-banner.risk-high {{ background: var(--high-bg); border-color: var(--high-fg); }}
-.d-icon {{ font-size: 22px; flex-shrink: 0; line-height: 1.4; }}
+.d-icon {{ font-size: 20px; flex-shrink: 0; line-height: 1.4; }}
+.decision-banner.risk-low  .d-icon {{ color: var(--low-fg);  }}
+.decision-banner.risk-med  .d-icon {{ color: var(--med-fg);  }}
+.decision-banner.risk-high .d-icon {{ color: var(--high-fg); }}
 .d-body {{ flex: 1; }}
 .d-action {{
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: .08em;
+  letter-spacing: .1em;
   margin-bottom: 4px;
+  text-transform: uppercase;
 }}
 .decision-banner.risk-low  .d-action {{ color: var(--low-fg);  }}
 .decision-banner.risk-med  .d-action {{ color: var(--med-fg);  }}
@@ -916,12 +930,13 @@ a:hover {{ text-decoration: underline; }}
 .d-right {{ display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }}
 .trend-chip {{
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   padding: 3px 10px;
-  border-radius: 12px;
-  border: 1px solid var(--border2);
-  color: var(--text2);
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--text3);
   white-space: nowrap;
+  letter-spacing: .06em;
 }}
 .formula-line {{
   font-family: var(--mono);
@@ -930,46 +945,51 @@ a:hover {{ text-decoration: underline; }}
   margin-top: 12px;
   padding: 10px 14px;
   background: var(--bg3);
-  border-radius: 6px;
+  border-radius: var(--r);
   border: 1px solid var(--border);
+  letter-spacing: .02em;
+  line-height: 1.7;
 }}
 
 /* ═══════════════════════════════════════════════
    Tabs
 ═══════════════════════════════════════════════ */
 .tab-bar {{
-  display: flex; gap: 3px;
+  display: flex; gap: 2px;
   background: var(--bg3);
-  border-radius: 8px; padding: 3px;
+  border-radius: var(--r); padding: 3px;
   width: fit-content;
   margin-bottom: 18px;
   border: 1px solid var(--border);
 }}
 .tab-btn {{
   background: none; border: none;
-  color: var(--text2);
-  padding: 6px 16px;
-  border-radius: 6px;
+  color: var(--text3);
+  padding: 5px 14px;
+  border-radius: 3px;
   cursor: pointer;
   font-family: var(--mono);
-  font-size: 11px; font-weight: 600;
-  letter-spacing: .06em;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: .08em;
   display: flex; align-items: center; gap: 7px;
-  transition: all .15s;
+  transition: all .12s;
+  text-transform: uppercase;
 }}
 .tab-btn.active {{
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 1px 6px rgba(99,102,241,.3);
+  background: var(--text);
+  color: var(--bg);
 }}
-.tab-btn:not(.active):hover {{ color: var(--text); background: var(--border); }}
+.tab-btn:not(.active):hover {{ color: var(--text2); background: var(--border); }}
 .tab-badge {{
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 18px; height: 18px; border-radius: 9px; padding: 0 5px;
+  min-width: 17px; height: 16px; border-radius: 3px; padding: 0 4px;
   font-size: 10px; font-weight: 700;
-  background: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.10);
+  color: inherit;
 }}
-.tab-btn.active .tab-badge {{ background: rgba(255,255,255,0.25); color: #fff; }}
+html[data-theme="light"] .tab-badge {{ background: rgba(0,0,0,0.08); }}
+.tab-btn.active .tab-badge {{ background: rgba(0,0,0,0.18); }}
+html[data-theme="light"] .tab-btn.active .tab-badge {{ background: rgba(255,255,255,0.3); }}
 .tab-pane {{ display: none; }}
 .tab-pane.active {{ display: block; }}
 
@@ -983,10 +1003,10 @@ a:hover {{ text-decoration: underline; }}
 }}
 .issue-table thead th {{
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: .08em;
+  letter-spacing: .1em;
   color: var(--text3);
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
@@ -996,7 +1016,7 @@ a:hover {{ text-decoration: underline; }}
 }}
 .issue-table tbody .issue-row {{
   cursor: pointer;
-  transition: background .12s;
+  transition: background .1s;
 }}
 .issue-table tbody .issue-row:hover {{ background: var(--accent-s); }}
 .issue-table tbody td {{
@@ -1023,7 +1043,7 @@ a:hover {{ text-decoration: underline; }}
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 600;
-  color: var(--accent) !important;
+  color: var(--text) !important;
   display: block;
   white-space: nowrap;
 }}
@@ -1031,19 +1051,14 @@ a:hover {{ text-decoration: underline; }}
 .line-chip {{
   display: inline-flex; align-items: center; gap: 4px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--text3);
   margin-top: 3px;
-  background: var(--accent-s);
-  border: 1px solid rgba(99,102,241,0.25);
-  border-radius: 4px;
-  padding: 1px 6px;
-}}
-html[data-theme="light"] .line-chip {{
-  color: var(--accent);
-  background: rgba(79,70,229,0.08);
-  border-color: rgba(79,70,229,0.2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
 }}
 /* Resolution chip for closed issues */
 .res-chip {{
@@ -1054,37 +1069,38 @@ html[data-theme="light"] .line-chip {{
   font-weight: 700;
   letter-spacing: .06em;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--res-fg);
-  background: color-mix(in srgb, var(--res-fg) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--res-fg) 28%, transparent);
+  background: color-mix(in srgb, var(--res-fg) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--res-fg) 20%, transparent);
   vertical-align: middle;
 }}
-/* Closed issue rows — slightly dimmed */
-.closed-row td {{ opacity: 0.72; }}
-.closed-row:hover td {{ opacity: 1; }}
-/* Closed/Resolved section (collapsible) */
+/* Closed issue rows */
+.closed-row td {{ opacity: 0.5; }}
+.closed-row:hover td {{ opacity: 0.8; }}
+/* Closed/Resolved section */
 .closed-section {{
-  margin-top: 20px;
-  border: 1px solid var(--border2);
-  border-radius: 8px;
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
   overflow: hidden;
 }}
 .closed-summary {{
   display: flex; align-items: center; gap: 10px;
-  padding: 12px 18px;
+  padding: 10px 16px;
   cursor: pointer;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: .06em;
-  color: var(--text2);
+  letter-spacing: .08em;
+  color: var(--text3);
   background: var(--bg3);
   user-select: none;
   list-style: none;
+  text-transform: uppercase;
 }}
 .closed-summary::-webkit-details-marker {{ display: none; }}
-.closed-summary i {{ color: #22c55e; font-size: 13px; }}
+.closed-summary i {{ color: #32D74B; font-size: 11px; }}
 .closed-summary::after {{
   content: '›';
   margin-left: auto;
@@ -1095,23 +1111,23 @@ html[data-theme="light"] .line-chip {{
 details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 .closed-count {{
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 20px; height: 20px;
-  border-radius: 10px; padding: 0 6px;
+  min-width: 18px; height: 18px;
+  border-radius: 3px; padding: 0 5px;
   font-size: 10px; font-weight: 700;
-  background: rgba(34,197,94,0.15);
-  color: #22c55e;
-  border: 1px solid rgba(34,197,94,0.3);
+  background: rgba(50,215,75,0.10);
+  color: #32D74B;
+  border: 1px solid rgba(50,215,75,0.22);
 }}
 .closed-table-wrap {{
   border-top: 1px solid var(--border);
 }}
 .rule-code {{
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text3);
   background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   padding: 1px 5px;
   white-space: nowrap;
 }}
@@ -1119,6 +1135,7 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   font-family: var(--mono);
   font-size: 10px;
   color: var(--text3);
+  letter-spacing: .04em;
 }}
 .chevron {{
   font-size: 16px;
@@ -1127,18 +1144,19 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   transition: transform .2s;
   line-height: 1;
 }}
-.issue-row.expanded .chevron {{ transform: rotate(90deg); color: var(--accent); }}
+.issue-row.expanded .chevron {{ transform: rotate(90deg); color: var(--text2); }}
 .badge {{
   display: inline-block;
   font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .05em;
-  padding: 2px 8px;
-  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  padding: 2px 7px;
+  border-radius: 3px;
   color: var(--badge-fg);
-  background: color-mix(in srgb, var(--badge-fg) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-fg) 25%, transparent);
+  background: color-mix(in srgb, var(--badge-fg) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-fg) 20%, transparent);
+  text-transform: uppercase;
 }}
 
 /* Fix drawer */
@@ -1146,67 +1164,79 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 .fix-row.open {{ display: table-row !important; }}
 .fix-cell {{ padding: 0 !important; border-bottom: 1px solid var(--border) !important; }}
 .fix-inner {{
-  padding: 18px 20px;
+  padding: 16px 18px;
   background: var(--fix-bg);
-  border-left: 3px solid var(--accent);
+  border-left: 2px solid var(--border2);
   border-top: 1px solid var(--fix-border);
 }}
 .fix-title {{
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text);
   margin-bottom: 8px;
+  font-family: var(--mono);
+  display: flex; align-items: center; gap: 8px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
 }}
+.fix-title i {{ color: var(--text3); font-size: 11px; }}
 .fix-body {{
   font-size: 13px;
   color: var(--text2);
-  line-height: 1.65;
+  line-height: 1.7;
   margin-bottom: 10px;
 }}
 .fix-rule-link {{
   font-family: var(--mono);
-  font-size: 11px;
-  color: var(--accent);
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: .04em;
+  display: inline-flex; align-items: center; gap: 6px;
 }}
+.fix-rule-link:hover {{ color: var(--text2); text-decoration: underline; }}
 .table-note {{
   font-size: 11px;
   color: var(--text3);
   margin-top: 10px;
   font-style: italic;
+  display: flex; align-items: center; gap: 6px;
 }}
 .empty-msg {{
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text3);
   padding: 20px 0;
   font-style: italic;
+  font-family: var(--mono);
+  letter-spacing: .04em;
 }}
 
 /* ═══════════════════════════════════════════════
-   Links row — evenly spaced, equal-width tiles
+   Links row
 ═══════════════════════════════════════════════ */
 .links-row {{
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  gap: 10px;
 }}
 .lnk {{
   display: flex; align-items: center; justify-content: center; gap: 9px;
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--r);
   font-family: var(--mono);
-  font-size: 11px; font-weight: 600;
-  letter-spacing: .04em;
-  border: 1px solid var(--border2);
-  color: var(--text2);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: .08em;
+  border: 1px solid var(--border);
+  color: var(--text3);
   background: var(--bg3);
-  transition: all .15s;
+  transition: all .12s;
   text-align: center;
+  text-transform: uppercase;
 }}
-.lnk i {{ font-size: 14px; flex-shrink: 0; }}
+.lnk i {{ font-size: 12px; flex-shrink: 0; }}
 .lnk:hover {{
   background: var(--accent-s);
-  border-color: rgba(99,102,241,.3);
-  color: var(--accent);
+  border-color: var(--border2);
+  color: var(--text);
   text-decoration: none;
 }}
 
@@ -1218,10 +1248,11 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   height: 260px;
   display: flex; align-items: center; justify-content: center;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text3);
-  border: 1px dashed var(--border2);
-  border-radius: 8px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
+  letter-spacing: .04em;
 }}
 
 /* ═══════════════════════════════════════════════
@@ -1230,9 +1261,11 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 .footer {{
   text-align: center;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text3);
   padding: 28px 0 0;
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }}
 </style>
 </head>
@@ -1242,14 +1275,24 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 <nav class="nav">
   <div class="nav-brand">
     <div class="status-dot {risk_cls}"></div>
-    DEVSECOPS · SECURITY DASHBOARD
+    DevSecOps · Security Dashboard
   </div>
   <div class="nav-right">
     <span class="nav-ts">{now_str}</span>
+    <!--
+      Theme toggle: using Font Awesome solid icons (fas).
+      fa-sun = light, fa-moon = dark, fa-circle-half-stroke = system/auto
+    -->
     <div class="theme-toggle" id="themeToggle">
-      <button class="theme-btn" data-t="light"  onclick="setTheme('light')"  title="Light mode">☀️</button>
-      <button class="theme-btn" data-t="dark"   onclick="setTheme('dark')"   title="Dark mode">🌙</button>
-      <button class="theme-btn" data-t="system" onclick="setTheme('system')" title="System default">⚙</button>
+      <button class="theme-btn" data-t="light"  onclick="setTheme('light')"  title="Light mode">
+        <i class="fas fa-sun"></i>
+      </button>
+      <button class="theme-btn" data-t="dark"   onclick="setTheme('dark')"   title="Dark mode">
+        <i class="fas fa-moon"></i>
+      </button>
+      <button class="theme-btn" data-t="system" onclick="setTheme('system')" title="System default">
+        <i class="fas fa-circle-half-stroke"></i>
+      </button>
     </div>
   </div>
 </nav>
@@ -1257,14 +1300,14 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 <!-- ─── Hero ─────────────────────────────────── -->
 <div class="hero">
   <div class="hero-title">Security Risk Report</div>
-  <div class="hero-sub">Project: <strong>{PROJECT_KEY}</strong></div>
+  <div class="hero-sub">Project · {PROJECT_KEY}</div>
   <div class="type-pills">{type_pills}</div>
   <div class="score-ring {risk_cls}">
     <div class="score-num">{risk_score}</div>
     <div class="score-lbl">Risk Score</div>
   </div>
   <br>
-  <span class="level-badge {risk_cls}">{level} RISK</span>
+  <span class="level-badge {risk_cls}">{level} Risk</span>
 </div>
 
 <!-- ─── Page ─────────────────────────────────── -->
@@ -1275,16 +1318,16 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
     <div class="card-title">Quick Links</div>
     <div class="links-row">
       <a class="lnk" href="{SONAR_DASHBOARD}" target="_blank">
-        <i class="fa-regular fa-shield-halved"></i> SonarCloud Dashboard
+        <i class="fas fa-shield-halved"></i> SonarCloud
       </a>
       <a class="lnk" href="{PROJECT_REPO}" target="_blank">
-        <i class="fa-regular fa-code-branch"></i> GitHub Repository
+        <i class="fas fa-code-branch"></i> Repository
       </a>
       <a class="lnk" href="{RUNNING_APP}" target="_blank">
-        <i class="fa-regular fa-circle-play"></i> Running Application
+        <i class="fas fa-circle-play"></i> Application
       </a>
       <a class="lnk" href="{GITHUB_RUN_URL}" target="_blank">
-        <i class="fa-regular fa-gear"></i> CI/CD Run
+        <i class="fas fa-gear"></i> CI/CD Run
       </a>
     </div>
   </div>
@@ -1314,7 +1357,7 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
         <div class="r-lbl">Maintainability</div>
       </div>
       <div class="rating-tile">
-        <div class="r-val" style="color:var(--accent);">{risk_score}</div>
+        <div class="r-val" style="color:var(--text);">{risk_score}</div>
         <div class="r-lbl">Risk Score</div>
       </div>
     </div>
@@ -1334,9 +1377,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
       </div>
     </div>
     <div class="formula-line">
-      Risk Score = (Bugs × {WEIGHT_BUGS}) + (Vulns × {WEIGHT_VULNS}) + (Hotspots × {WEIGHT_HOTSPOTS})
+      Risk = (Bugs × {WEIGHT_BUGS}) + (Vulns × {WEIGHT_VULNS}) + (Hotspots × {WEIGHT_HOTSPOTS})
       &nbsp;=&nbsp; ({bugs_count}×{WEIGHT_BUGS}) + ({vulns_count}×{WEIGHT_VULNS}) + ({hotspots_count}×{WEIGHT_HOTSPOTS})
-      &nbsp;=&nbsp; <strong>{risk_score}</strong>
+      &nbsp;=&nbsp; <strong style="color:var(--text);">{risk_score}</strong>
     </div>
   </div>
 
@@ -1345,13 +1388,13 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
     <div class="card-title">Issue Details</div>
     <div class="tab-bar">
       <button class="tab-btn active" onclick="switchTab('bugs',this)">
-        <span class="tab-badge">{bugs_count}</span> BUGS
+        <span class="tab-badge">{bugs_count}</span> Bugs
       </button>
       <button class="tab-btn" onclick="switchTab('vulns',this)">
-        <span class="tab-badge">{vulns_count}</span> VULNERABILITIES
+        <span class="tab-badge">{vulns_count}</span> Vulnerabilities
       </button>
       <button class="tab-btn" onclick="switchTab('hotspots',this)">
-        <span class="tab-badge">{hotspots_count}</span> HOTSPOTS
+        <span class="tab-badge">{hotspots_count}</span> Hotspots
       </button>
     </div>
     <div id="tab-bugs"     class="tab-pane active">{bugs_html}</div>
@@ -1376,9 +1419,6 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 <script>
 /* ══════════════════════════════════════════════════════
    Theme management
-   The <head> inline script already applied the correct
-   theme before first paint. Here we just sync the toggle
-   button state and wire up the controls.
 ══════════════════════════════════════════════════════ */
 var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -1405,13 +1445,11 @@ function setTheme(pref) {{
   applyTheme(pref);
 }}
 
-// Sync buttons on load using the pref already applied by the head script
 (function() {{
   var saved = window.__dsoSavedPref || 'dark';
   syncToggleButtons(saved);
 }})();
 
-// Keep system theme in sync with OS preference changes
 MEDIA.addEventListener('change', function() {{
   var saved = '';
   try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch(e) {{}}
@@ -1446,12 +1484,6 @@ function toggleRow(uid) {{
 
 /* ══════════════════════════════════════════════════════
    Risk trend chart
-   Chart.js may still be loading when this script runs
-   (the <script> tag is synchronous but we want to be
-   defensive). We poll until Chart is available then
-   initialise — this makes the chart work whether
-   Chart.js loads fast or slow (e.g. in Jenkins with
-   restricted network or Content-Security-Policy).
 ══════════════════════════════════════════════════════ */
 var CHART_DATA = {{
   labels: {h_labels},
@@ -1464,25 +1496,27 @@ var chartInstance = null;
 function levelColor(l, alpha) {{
   var key = (l || '').toUpperCase().trim();
   var map = {{
-    HIGH:   'rgba(239,68,68,'   + alpha + ')',
-    MEDIUM: 'rgba(245,158,11,' + alpha + ')',
-    LOW:    'rgba(34,197,94,'  + alpha + ')'
+    HIGH:   'rgba(255,59,48,'   + alpha + ')',
+    MEDIUM: 'rgba(255,214,10,' + alpha + ')',
+    LOW:    'rgba(50,215,75,'  + alpha + ')'
   }};
-  return map[key] || ('rgba(148,163,184,' + alpha + ')');
+  return map[key] || ('rgba(136,136,136,' + alpha + ')');
 }}
 
 function buildChart(theme) {{
   var canvas = document.getElementById('riskChart');
   if (!canvas) return;
-  if (typeof Chart === 'undefined') return;   // guard: CDN not loaded yet
+  if (typeof Chart === 'undefined') return;
 
-  var isDark   = theme !== 'light';
-  var gridCol  = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
-  var tickCol  = isDark ? '#64748b' : '#94a3b8';
-  var tipBg    = isDark ? '#1e2336' : '#ffffff';
-  var tipBor   = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
-  var tipText  = isDark ? '#e2e8f0' : '#0f172a';
-  var tipMuted = isDark ? '#94a3b8' : '#64748b';
+  var isDark  = theme !== 'light';
+  var gridCol = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)';
+  var tickCol = isDark ? '#4a4a4a' : '#AAAAAA';
+  var tipBg   = isDark ? '#0B0B0B' : '#FFFFFF';
+  var tipBor  = isDark ? '#1F1F1F' : '#DDDDDD';
+  var tipText = isDark ? '#FFFFFF' : '#000000';
+  var tipMuted= isDark ? '#888888' : '#555555';
+  var lineCol = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)';
+  var fillCol = isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)';
 
   if (chartInstance) {{ chartInstance.destroy(); chartInstance = null; }}
 
@@ -1493,17 +1527,15 @@ function buildChart(theme) {{
       datasets: [{{
         label: 'Risk Score',
         data: CHART_DATA.scores,
-        borderColor: '#6366f1',
-        backgroundColor: isDark
-          ? 'rgba(99,102,241,0.07)'
-          : 'rgba(99,102,241,0.06)',
+        borderColor: lineCol,
+        backgroundColor: fillCol,
         pointBackgroundColor: CHART_DATA.levels.map(function(l) {{ return levelColor(l, 1); }}),
         pointBorderColor:     CHART_DATA.levels.map(function(l) {{ return levelColor(l, 1); }}),
         pointRadius: 5,
         pointHoverRadius: 8,
         tension: 0.38,
         fill: true,
-        borderWidth: 2
+        borderWidth: 1.5
       }}]
     }},
     options: {{
@@ -1522,8 +1554,7 @@ function buildChart(theme) {{
             afterBody: function(items) {{
               var idx = items[0].dataIndex;
               var raw = (CHART_DATA.levels[idx] || '').toUpperCase().trim();
-              var label = raw || 'UNKNOWN';
-              return ['Risk Level: ' + label];
+              return ['Risk Level: ' + (raw || 'UNKNOWN')];
             }}
           }}
         }}
@@ -1531,12 +1562,14 @@ function buildChart(theme) {{
       scales: {{
         x: {{
           ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
-          grid:  {{ color: gridCol }}
+          grid:  {{ color: gridCol }},
+          border: {{ color: gridCol }}
         }},
         y: {{
           beginAtZero: true,
-          ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 11 }} }},
-          grid:  {{ color: gridCol }}
+          ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
+          grid:  {{ color: gridCol }},
+          border: {{ color: gridCol }}
         }}
       }}
     }}
@@ -1547,14 +1580,10 @@ function rebuildChart(theme) {{
   if (typeof Chart !== 'undefined') {{
     buildChart(theme);
   }}
-  // else: the polling loop below will pick it up
 }}
 
-// Robust chart init: poll for Chart.js readiness, then build.
-// Handles: synchronous load (Chart ready immediately), async CDN load,
-// and CSP / network failures (shows fallback message after timeout).
 (function initChartWhenReady() {{
-  var MAX_WAIT_MS = 10000;   // 10 s timeout before showing error
+  var MAX_WAIT_MS = 10000;
   var start = Date.now();
   var theme = window.__dsoInitialTheme || 'dark';
 
@@ -1564,12 +1593,11 @@ function rebuildChart(theme) {{
       return;
     }}
     if (Date.now() - start > MAX_WAIT_MS) {{
-      // Replace canvas with an error message
       var wrap = document.querySelector('.chart-wrap');
       if (wrap) {{
         wrap.innerHTML =
           '<div class="chart-error">Chart.js failed to load — ' +
-          'check your network or Content-Security-Policy settings.</div>';
+          'check network or Content-Security-Policy settings.</div>';
       }}
       return;
     }}
