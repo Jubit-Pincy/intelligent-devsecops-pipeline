@@ -451,7 +451,7 @@ jobs:
 
       - name: Upload HTML report
         # actions/upload-artifact v4.6.2
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v3
         with:
           name: security-dashboard
           path: reports/security-report.html
