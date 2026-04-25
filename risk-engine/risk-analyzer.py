@@ -1,6 +1,6 @@
 """
 risk-analyzer.py
-Intelligent Risk-Adaptive DevSecOps – Risk Engine v4
+Intelligent Risk-Adaptive DevSecOps - Risk Engine v4
 Fixes in this version:
   • Theme switcher works in Jenkins / static HTML (inline <script> in <head>
     applies theme before first paint — no flash of wrong theme)
@@ -16,15 +16,15 @@ Fixes in this version:
   • FIXED: Theme toggle emojis replaced with FA solid icons (fa-sun, fa-moon, fa-circle-half-stroke)
   • FIXED: Color scheme updated to Obsidian Minimalist Palette
 """
-
+ 
 from datetime import datetime, timezone, timedelta
 import os, sys, json, requests
-
+ 
 # ─────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────
 IST = timezone(timedelta(hours=5, minutes=30))
-
+ 
 SONAR_URL      = os.getenv("SONAR_URL", "https://sonarcloud.io")
 SONAR_TOKEN    = os.getenv("SONAR_TOKEN", "")
 PROJECT_KEY    = os.getenv("PROJECT_KEY", "")
@@ -32,13 +32,14 @@ PROJECT_REPO   = os.getenv("GITHUB_REPO_URL",
                            "https://github.com/Jubit-Pincy/intelligent-devsecops-pipeline")
 RUNNING_APP    = os.getenv("RUNNING_APP_URL", "http://localhost:8081/")
 GITHUB_RUN_URL = os.getenv("GITHUB_RUN_URL", "#")
-
+API_ENDPOINT   = os.getenv("API_ENDPOINT", "")
+ 
 _raw_types = os.getenv("DETECTED_TYPES", '["unknown"]')
 try:
     DETECTED_TYPES = json.loads(_raw_types)
 except Exception:
     DETECTED_TYPES = [_raw_types]
-
+ 
 def _key_from_report():
     for path in (
         ".sonarqube/out/.sonar/report-task.txt",
@@ -51,28 +52,28 @@ def _key_from_report():
                     if line.startswith("projectKey="):
                         return line.split("=", 1)[1].strip()
     return None
-
+ 
 if not PROJECT_KEY:
     PROJECT_KEY = _key_from_report() or "DefaultProject"
-
+ 
 SONAR_DASHBOARD = f"{SONAR_URL}/project/overview?id={PROJECT_KEY}"
-
+ 
 if not SONAR_TOKEN:
     print("ERROR: SONAR_TOKEN not set.")
     sys.exit(1)
-
+ 
 def get_safe_int(env_var, default):
     try:
         return int(os.getenv(env_var, ""))
     except (ValueError, TypeError):
         return default
-
+ 
 WEIGHT_BUGS     = get_safe_int("WEIGHT_BUGS",     3)
 WEIGHT_VULNS    = get_safe_int("WEIGHT_VULNS",     5)
 WEIGHT_HOTSPOTS = get_safe_int("WEIGHT_HOTSPOTS",  2)
-
+ 
 AUTH = (SONAR_TOKEN, "")
-
+ 
 # ─────────────────────────────────────────────────
 # SonarCloud API helpers
 # ─────────────────────────────────────────────────
@@ -81,7 +82,7 @@ def sonar_get(endpoint, params=None):
                      params=params, auth=AUTH, timeout=30)
     r.raise_for_status()
     return r.json()
-
+ 
 def fetch_summary_metrics():
     keys = ("bugs,vulnerabilities,security_hotspots,"
             "code_smells,coverage,duplicated_lines_density,"
@@ -102,7 +103,7 @@ def fetch_summary_metrics():
             except (KeyError, ValueError):
                 result[metric_key] = 0
     return result
-
+ 
 def fetch_issues(issue_types, ps=10, statuses=None):
     params = {
         "componentKeys": PROJECT_KEY,
@@ -118,7 +119,7 @@ def fetch_issues(issue_types, ps=10, statuses=None):
     except Exception as e:
         print(f"  Warning: could not fetch {issue_types} ({statuses}): {e}")
         return []
-
+ 
 def fetch_hotspots(ps=10):
     try:
         data = sonar_get("hotspots/search", {
@@ -132,7 +133,7 @@ def fetch_hotspots(ps=10):
     except Exception as e:
         print(f"  Warning: could not fetch hotspots: {e}")
         return []
-
+ 
 def get_line(issue: dict) -> str:
     line = issue.get("line")
     if line is not None:
@@ -142,14 +143,14 @@ def get_line(issue: dict) -> str:
     if start is not None:
         return str(start)
     return "N/A"
-
+ 
 def get_file(issue: dict) -> str:
     comp = issue.get("component", "")
     parts = comp.split(":", 1)
     if len(parts) == 2:
         return parts[1]
     return comp
-
+ 
 def mark_issue_resolved(issue_key: str, transition: str = "wontfix", comment: str = ""):
     """
     Mark an issue as resolved in SonarCloud.
@@ -179,20 +180,20 @@ def mark_issue_resolved(issue_key: str, transition: str = "wontfix", comment: st
     except Exception as e:
         print(f"  Warning: could not resolve issue {issue_key}: {e}")
         return False
-
+ 
 # ─────────────────────────────────────────────────
 # Fetch data
 # ─────────────────────────────────────────────────
 print("Fetching SonarCloud summary metrics …")
 metrics = fetch_summary_metrics()
-
+ 
 bugs_count      = int(metrics.get("bugs", 0))
 vulns_count     = int(metrics.get("vulnerabilities", 0))
 hotspots_count  = int(metrics.get("security_hotspots", 0))
 smells_count    = int(metrics.get("code_smells", 0))
 coverage_pct    = round(metrics.get("coverage", 0), 1)
 duplication_pct = round(metrics.get("duplicated_lines_density", 0), 1)
-
+ 
 # Parse language distribution
 lang_dist_raw = metrics.get("ncloc_language_distribution", "")
 language_data = []
@@ -205,38 +206,38 @@ if lang_dist_raw:
     # Override DETECTED_TYPES with actual languages if available
     if language_data:
         DETECTED_TYPES = [item["lang"] for item in language_data]
-
+ 
 def rating_label(val):
     return {1: "A", 2: "B", 3: "C", 4: "D", 5: "E"}.get(int(val), "?")
-
+ 
 reliability_rating     = rating_label(metrics.get("reliability_rating", 1))
 security_rating        = rating_label(metrics.get("security_rating", 1))
 maintainability_rating = rating_label(metrics.get("sqale_rating", 1))
-
+ 
 print(f"  Bugs={bugs_count}, Vulns={vulns_count}, Hotspots={hotspots_count}")
-
+ 
 print("Fetching individual issue details …")
 OPEN_STATUSES   = "OPEN,CONFIRMED,REOPENED"
 CLOSED_STATUSES = "RESOLVED,CLOSED"
-
+ 
 bug_issues        = fetch_issues("BUG",           ps=10, statuses=OPEN_STATUSES)
 bug_issues_closed = fetch_issues("BUG",           ps=10, statuses=CLOSED_STATUSES)
 vuln_issues        = fetch_issues("VULNERABILITY", ps=10, statuses=OPEN_STATUSES)
 vuln_issues_closed = fetch_issues("VULNERABILITY", ps=10, statuses=CLOSED_STATUSES)
 hotspot_list = fetch_hotspots(ps=10)
-
+ 
 # ─────────────────────────────────────────────────
 # Risk scoring
 # ─────────────────────────────────────────────────
 risk_score = (bugs_count * WEIGHT_BUGS +
               vulns_count * WEIGHT_VULNS +
               hotspots_count * WEIGHT_HOTSPOTS)
-
+ 
 level = "LOW" if risk_score <= 2 else "MEDIUM" if risk_score <= 5 else "HIGH"
-
+ 
 print(f"Weights → Bugs:{WEIGHT_BUGS} Vulns:{WEIGHT_VULNS} Hotspots:{WEIGHT_HOTSPOTS}")
 print(f"Risk Score: {risk_score}  Level: {level}")
-
+ 
 # ─────────────────────────────────────────────────
 # History & trend
 # ─────────────────────────────────────────────────
@@ -249,7 +250,7 @@ if os.path.exists(history_file):
             history = json.load(f)
     except Exception:
         pass
-
+ 
 prev = history[-1]["risk_score"] if history else None
 if prev is None:
     trend = "First Run"
@@ -259,16 +260,16 @@ elif risk_score < prev:
     trend = "↓ Decreasing"
 else:
     trend = "→ Stable"
-
+ 
 def _infer_level(score):
     if score <= 2:   return "LOW"
     if score <= 5:   return "MEDIUM"
     return "HIGH"
-
+ 
 for entry in history:
     if not entry.get("level"):
         entry["level"] = _infer_level(entry.get("risk_score", 0))
-
+ 
 history.append({
     "timestamp":  datetime.now(IST).strftime("%d-%m-%Y %H:%M"),
     "risk_score": risk_score,
@@ -276,7 +277,7 @@ history.append({
 })
 with open(history_file, "w") as f:
     json.dump(history, f, indent=2)
-
+ 
 # ─────────────────────────────────────────────────
 # Adaptive decision
 # ─────────────────────────────────────────────────
@@ -290,9 +291,9 @@ elif level == "MEDIUM":
 else:
     decision = ("APPROVED — Monitor Trend"
                 if "Increasing" in trend else "APPROVED — All Clear")
-
+ 
 print(f"Decision: {decision}  Trend: {trend}")
-
+ 
 # ─────────────────────────────────────────────────
 # Remediation guidance
 # ─────────────────────────────────────────────────
@@ -318,11 +319,11 @@ RULE_ADVICE = {
     "squid:S2201":  ("Return value ignored",
                      "Check the return value of methods that signal errors or state changes. Store or explicitly discard with a comment."),
     "squid:S138":   ("Method too long",
-                     "Extract cohesive blocks into well-named private methods. Aim for methods under 30–40 lines."),
+                     "Extract cohesive blocks into well-named private methods. Aim for methods under 30-40 lines."),
     "squid:S1192":  ("Duplicated string literal",
                      "Extract repeated string literals into named constants to reduce typo risk and ease future updates."),
 }
-
+ 
 GENERIC_ADVICE = {
     "BUG": (
         "General bug remediation",
@@ -343,14 +344,14 @@ GENERIC_ADVICE = {
         "written justification recorded in SonarCloud."
     ),
 }
-
+ 
 def get_advice(rule: str, issue_type: str) -> tuple:
     for prefix, advice in RULE_ADVICE.items():
         if rule.startswith(prefix) or rule == prefix:
             return advice
     return GENERIC_ADVICE.get(issue_type.upper(), ("Review required",
             "Consult the SonarCloud rule description for specific remediation steps."))
-
+ 
 # ─────────────────────────────────────────────────
 # HTML rendering helpers
 # ─────────────────────────────────────────────────
@@ -365,18 +366,18 @@ SEV_META = {
     "MEDIUM":   ("#FFD60A", "#1a1500", "#3a2e00"),
     "LOW":      ("#32D74B", "#001a05", "#003a0d"),
 }
-
+ 
 def sev_badge(sev: str) -> str:
     s = (sev or "INFO").upper()
     fg, _, _ = SEV_META.get(s, ("#888888", "#111111", "#1F1F1F"))
     return f'<span class="badge" style="--badge-fg:{fg};">{s}</span>'
-
+ 
 _row_counter = [0]
-
+ 
 def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
     _row_counter[0] += 1
     uid = f"row-{_row_counter[0]}"
-
+ 
     key        = issue.get("key", "")
     msg        = issue.get("message", "—")[:150]
     sev        = issue.get("severity", "INFO")
@@ -385,16 +386,16 @@ def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
     resolution = issue.get("resolution", "")
     line       = get_line(issue)
     file       = get_file(issue)
-
+ 
     if is_closed:
         link = (f"{SONAR_URL}/project/issues?id={PROJECT_KEY}"
                 f"&open={key}&statuses={status}&resolved=true")
     else:
         link = f"{SONAR_URL}/project/issues?id={PROJECT_KEY}&open={key}"
-
+ 
     adv_title, adv_body = get_advice(rule, itype)
     display_file = file.split("/")[-1] if file else "—"
-
+ 
     res_html = ""
     if resolution:
         res_color = {
@@ -405,7 +406,7 @@ def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
         }.get(resolution.upper(), "#888888")
         res_html = (f'<span class="res-chip" style="--res-fg:{res_color};">'
                     f'{resolution}</span>')
-
+ 
     # FIX: use fas (solid) — fa-regular requires Font Awesome Pro
     return f"""
 <tr class="issue-row{'  closed-row' if is_closed else ''}" onclick="toggleRow('{uid}')">
@@ -446,23 +447,23 @@ def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
     </div>
   </td>
 </tr>"""
-
+ 
 def hotspot_row(hs: dict) -> str:
     _row_counter[0] += 1
     uid = f"row-{_row_counter[0]}"
-
+ 
     key      = hs.get("key", "")
     msg      = hs.get("message", "—")[:150]
     prob     = hs.get("vulnerabilityProbability", "LOW")
     rule     = hs.get("ruleKey", "")
     line     = get_line(hs)
     file     = get_file(hs)
-
+ 
     link = f"{SONAR_URL}/project/security_hotspots?id={PROJECT_KEY}&hotspots={key}"
-
+ 
     adv_title, adv_body = get_advice(rule, "HOTSPOT")
     display_file = file.split("/")[-1] if file else "—"
-
+ 
     return f"""
 <tr class="issue-row" onclick="toggleRow('{uid}')">
   <td class="td-file">
@@ -489,7 +490,7 @@ def hotspot_row(hs: dict) -> str:
     </div>
   </td>
 </tr>"""
-
+ 
 def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> str:
     thead = """
     <thead>
@@ -503,10 +504,10 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
         <th></th>
       </tr>
     </thead>"""
-
+ 
     if not rows_html and not closed_rows_html:
         return f'<p class="empty-msg">No {empty_label} detected — great work!</p>'
-
+ 
     open_block = ""
     if rows_html:
         open_block = f"""
@@ -522,7 +523,7 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
 </div>"""
     else:
         open_block = f'<p class="empty-msg">No open {empty_label} — great work!</p>'
-
+ 
     closed_block = ""
     if closed_rows_html:
         n = len(closed_rows_html)
@@ -544,41 +545,41 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
     </p>
   </div>
 </details>"""
-
+ 
     return open_block + closed_block
-
+ 
 # Build HTML blocks
 bug_rows          = [issue_row(i, "BUG",           is_closed=False) for i in bug_issues]
 bug_rows_closed   = [issue_row(i, "BUG",           is_closed=True)  for i in bug_issues_closed]
 vuln_rows         = [issue_row(i, "VULNERABILITY",  is_closed=False) for i in vuln_issues]
 vuln_rows_closed  = [issue_row(i, "VULNERABILITY",  is_closed=True)  for i in vuln_issues_closed]
 hs_rows           = [hotspot_row(h)                                   for h in hotspot_list]
-
+ 
 bugs_html     = issues_table(bug_rows,  bug_rows_closed,  "bugs")
 vulns_html    = issues_table(vuln_rows, vuln_rows_closed, "vulnerabilities")
 hotspots_html = issues_table(hs_rows,  [],               "hotspots")
-
+ 
 # Chart data
 h_labels = json.dumps([e["timestamp"]  for e in history])
 h_scores = json.dumps([e["risk_score"] for e in history])
 h_levels = json.dumps([e.get("level","") for e in history])
 lang_chart_data = json.dumps(language_data)
-
+ 
 # Misc
 type_pills = "".join(
     f'<span class="type-pill">{t.upper()}</span>' for t in DETECTED_TYPES
 )
-
+ 
 RISK_CSS_CLASS = {"LOW": "risk-low", "MEDIUM": "risk-med", "HIGH": "risk-high"}
 risk_cls = RISK_CSS_CLASS.get(level, "risk-low")
-
+ 
 # FIX: fas (solid) classes — fa-regular requires Font Awesome Pro
 decision_icon_cls = {
     "HIGH":   "fas fa-circle-xmark",
     "MEDIUM": "fas fa-triangle-exclamation",
     "LOW":    "fas fa-circle-check",
 }.get(level, "fas fa-circle-check")
-
+ 
 if level == "HIGH":
     summary_txt = (f"Build blocked: {vulns_count} vulnerabilities, {bugs_count} bugs, "
                    f"and {hotspots_count} hotspots exceed acceptable thresholds. "
@@ -590,8 +591,8 @@ elif level == "MEDIUM":
 else:
     summary_txt = (f"Build approved. Detected issues ({vulns_count} vulns, "
                    f"{bugs_count} bugs, {hotspots_count} hotspots) are within thresholds.")
-
-now_str = datetime.now(IST).strftime("%d %b %Y – %H:%M:%S IST")
+ 
+now_str = datetime.now(IST).strftime("%d %b %Y - %H:%M:%S IST")
 
 # ─────────────────────────────────────────────────
 # HTML report
@@ -1571,25 +1572,6 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
         <div class="m-val m-dup">{duplication_pct}%</div>
       </div>
     </div>
-
-    <div class="rating-row">
-      <div class="rating-tile">
-        <div class="r-val r-{reliability_rating}">{reliability_rating}</div>
-        <div class="r-lbl">Reliability</div>
-      </div>
-      <div class="rating-tile">
-        <div class="r-val r-{security_rating}">{security_rating}</div>
-        <div class="r-lbl">Security</div>
-      </div>
-      <div class="rating-tile">
-        <div class="r-val r-{maintainability_rating}">{maintainability_rating}</div>
-        <div class="r-lbl">Maintainability</div>
-      </div>
-      <div class="rating-tile">
-        <div class="r-val" style="color: var(--text);">{risk_score}</div>
-        <div class="r-lbl">Risk Score</div>
-      </div>
-    </div>
     <div class="rating-row">
       <div class="rating-tile">
         <div class="r-val r-{reliability_rating}">{reliability_rating}</div>
@@ -1668,6 +1650,7 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
    Theme management
 ══════════════════════════════════════════════════════ */
 var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
+var API_ENDPOINT = '{API_ENDPOINT}';
 
 function resolveTheme(pref) {{
   if (pref === 'system') return MEDIA.matches ? 'dark' : 'light';
@@ -1685,25 +1668,48 @@ function applyTheme(saved) {{
   document.documentElement.setAttribute('data-theme', resolved);
   syncToggleButtons(saved);
   rebuildChart(resolved);
+  rebuildLangChart();<script>
+/* ══════════════════════════════════════════════════════
+   Theme management
+══════════════════════════════════════════════════════ */
+var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
+var API_ENDPOINT = '{API_ENDPOINT}';
+ 
+function resolveTheme(pref) {{
+  if (pref === 'system') return MEDIA.matches ? 'dark' : 'light';
+  return pref || 'dark';
+}}
+ 
+function syncToggleButtons(saved) {{
+  document.querySelectorAll('.theme-btn').forEach(function(b) {{
+    b.classList.toggle('active', b.dataset.t === saved);
+  }});
+}}
+ 
+function applyTheme(saved) {{
+  var resolved = resolveTheme(saved);
+  document.documentElement.setAttribute('data-theme', resolved);
+  syncToggleButtons(saved);
+  rebuildChart(resolved);
   rebuildLangChart();
 }}
-
+ 
 function setTheme(pref) {{
   try {{ localStorage.setItem('dso-theme', pref); }} catch(e) {{}}
   applyTheme(pref);
 }}
-
+ 
 (function() {{
   var saved = window.__dsoSavedPref || 'dark';
   syncToggleButtons(saved);
 }})();
-
+ 
 MEDIA.addEventListener('change', function() {{
   var saved = '';
   try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch(e) {{}}
   if ((saved || 'system') === 'system') applyTheme('system');
 }});
-
+ 
 /* ══════════════════════════════════════════════════════
    Tabs
 ══════════════════════════════════════════════════════ */
@@ -1717,7 +1723,7 @@ function switchTab(name, btn) {{
   document.getElementById('tab-' + name).classList.add('active');
   btn.classList.add('active');
 }}
-
+ 
 /* ══════════════════════════════════════════════════════
    Fix row toggle
 ══════════════════════════════════════════════════════ */
@@ -1729,49 +1735,102 @@ function toggleRow(uid) {{
   row.style.display = open ? 'none' : 'table-row';
   trig.classList.toggle('expanded', !open);
 }}
-
+ 
 /* ══════════════════════════════════════════════════════
    Resolve issue in SonarCloud
 ══════════════════════════════════════════════════════ */
 function resolveIssue(issueKey, transition, event) {{
   event.stopPropagation();
   
-  var confirmMsg = 'Mark this issue as "' + transition + '" in SonarCloud?';
+  var transitionLabels = {{
+    'wontfix': "Won't Fix",
+    'falsepositive': 'False Positive',
+    'resolve': 'Resolved'
+  }};
+  
+  var confirmMsg = 'Mark this issue as "' + transitionLabels[transition] + '" in SonarCloud?';
   if (!confirm(confirmMsg)) return;
   
   var btn = event.target.closest('.resolve-btn');
+  var originalHTML = btn ? btn.innerHTML : '';
+  
   if (btn) {{
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
   }}
   
-  // In static HTML, we can't make API calls directly
-  // This would need a backend endpoint
-  alert('This feature requires backend API integration.\\n\\n' +
-        'To resolve issue ' + issueKey + ':\\n' +
-        '1. Go to SonarCloud\\n' +
-        '2. Find the issue\\n' +
-        '3. Use the "Resolve" dropdown\\n' +
-        '4. Select: ' + transition);
-  
-  if (btn) {{
-    btn.disabled = false;
-    btn.innerHTML = btn.dataset.original || 'Resolve';
+  // Check if API endpoint is configured
+  if (!API_ENDPOINT || API_ENDPOINT === '{{API_ENDPOINT}}' || API_ENDPOINT === 'http://localhost:5000') {{
+    // Fallback to manual instructions
+    alert('API endpoint not configured.\\n\\n' +
+          'To resolve issue ' + issueKey + ':\\n' +
+          '1. Go to SonarCloud\\n' +
+          '2. Find the issue\\n' +
+          '3. Use the "Resolve" dropdown\\n' +
+          '4. Select: ' + transitionLabels[transition]);
+    
+    if (btn) {{
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }}
+    return;
   }}
+  
+  // Call the API
+  fetch(API_ENDPOINT + '/api/resolve-issue', {{
+    method: 'POST',
+    headers: {{
+      'Content-Type': 'application/json',
+    }},
+    body: JSON.stringify({{
+      issue_key: issueKey,
+      transition: transition,
+      comment: 'Resolved via DevSecOps Dashboard on ' + new Date().toISOString()
+    }})
+  }})
+  .then(function(response) {{
+    return response.json().then(function(data) {{
+      return {{ ok: response.ok, status: response.status, data: data }};
+    }});
+  }})
+  .then(function(result) {{
+    if (result.ok) {{
+      alert('✓ Issue marked as ' + transitionLabels[transition] + ' successfully!\\n\\n' +
+            'Refresh the page to see updated status.');
+      
+      // Optionally refresh the page after 2 seconds
+      setTimeout(function() {{
+        window.location.reload();
+      }}, 2000);
+    }} else {{
+      throw new Error(result.data.error || 'Failed to resolve issue');
+    }}
+  }})
+  .catch(function(error) {{
+    alert('✗ Failed to resolve issue\\n\\n' +
+          'Error: ' + error.message + '\\n\\n' +
+          'Please try again or resolve manually in SonarCloud.');
+    console.error('Resolve error:', error);
+    
+    if (btn) {{
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }}
+  }});
 }}
-
+ 
 /* ══════════════════════════════════════════════════════
    Language distribution chart
 ══════════════════════════════════════════════════════ */
 var LANG_DATA = {lang_chart_data};
 var langChartInstance = null;
-
+ 
 var LANG_COLORS = [
   '#FF3B30', '#FFD60A', '#32D74B', '#5E5CE6',
   '#FF9F0A', '#00C7BE', '#BF5AF2', '#FF375F',
   '#30D158', '#64D2FF', '#FFD70A', '#5E5CE6'
 ];
-
+ 
 function buildLangChart() {{
   if (!LANG_DATA || LANG_DATA.length === 0) return;
   
@@ -1834,13 +1893,13 @@ function buildLangChart() {{
     }}).join('');
   }}
 }}
-
+ 
 function rebuildLangChart() {{
   if (typeof Chart !== 'undefined') {{
     buildLangChart();
   }}
 }}
-
+ 
 /* ══════════════════════════════════════════════════════
    Risk trend chart
 ══════════════════════════════════════════════════════ */
@@ -1849,9 +1908,9 @@ var CHART_DATA = {{
   scores: {h_scores},
   levels: {h_levels}
 }};
-
+ 
 var chartInstance = null;
-
+ 
 function levelColor(l, alpha) {{
   var key = (l || '').toUpperCase().trim();
   var map = {{
@@ -1861,12 +1920,12 @@ function levelColor(l, alpha) {{
   }};
   return map[key] || ('rgba(136,136,136,' + alpha + ')');
 }}
-
+ 
 function buildChart(theme) {{
   var canvas = document.getElementById('riskChart');
   if (!canvas) return;
   if (typeof Chart === 'undefined') return;
-
+ 
   var isDark  = theme !== 'light';
   var gridCol = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)';
   var tickCol = isDark ? '#4a4a4a' : '#AAAAAA';
@@ -1876,9 +1935,9 @@ function buildChart(theme) {{
   var tipMuted= isDark ? '#888888' : '#555555';
   var lineCol = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)';
   var fillCol = isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)';
-
+ 
   if (chartInstance) {{ chartInstance.destroy(); chartInstance = null; }}
-
+ 
   chartInstance = new Chart(canvas.getContext('2d'), {{
     type: 'line',
     data: {{
@@ -1934,18 +1993,18 @@ function buildChart(theme) {{
     }}
   }});
 }}
-
+ 
 function rebuildChart(theme) {{
   if (typeof Chart !== 'undefined') {{
     buildChart(theme);
   }}
 }}
-
+ 
 (function initChartWhenReady() {{
   var MAX_WAIT_MS = 10000;
   var start = Date.now();
   var theme = window.__dsoInitialTheme || 'dark';
-
+ 
   function attempt() {{
     if (typeof Chart !== 'undefined') {{
       buildChart(theme);
@@ -1963,7 +2022,7 @@ function rebuildChart(theme) {{
     }}
     setTimeout(attempt, 150);
   }}
-
+ 
   attempt();
 }})();
 </script>

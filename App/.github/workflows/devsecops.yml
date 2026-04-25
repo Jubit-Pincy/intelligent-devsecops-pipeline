@@ -2,9 +2,9 @@ name: Intelligent Risk-Adaptive DevSecOps Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ Testing ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ Testing ]
   workflow_dispatch:
     inputs:
       weight_bugs:
@@ -342,6 +342,10 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ needs.detect.outputs.project_key }}
             -Dsonar.organization=${{ env.SONAR_ORG }}
+            -Dsonar.sources=.
+            -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/.venv/**,**/target/**,**/build/**,**/dist/**,**/__pycache__/**,**/.git/**
+            -Dsonar.python.version=3.8,3.9,3.10,3.11,3.12
+            -Dsonar.scm.provider=git
 
       - name: Parse Sonar task ID
         id: parse_task
@@ -433,6 +437,7 @@ jobs:
           WEIGHT_HOTSPOTS: ${{ env.WEIGHT_HOTSPOTS }}
           DETECTED_TYPES:  ${{ needs.detect.outputs.types_json }}
           GITHUB_RUN_URL:  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          API_ENDPOINT:    ${{ secrets.API_ENDPOINT || 'http://localhost:5000' }}
         run: |
           mkdir -p reports
           python3 risk-engine/risk-analyzer.py | tee /tmp/risk_output.txt
@@ -453,6 +458,56 @@ jobs:
         run: |
           echo "::error::Pipeline blocked - HIGH risk detected."
           exit 1
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 5.5 - Deploy API Server (if enabled)
+  # ─────────────────────────────────────────────────────────────
+  deploy-api:
+    name: Deploy API Server
+    needs: [detect, risk]
+    runs-on: ubuntu-latest
+    if: |
+      needs.risk.outputs.risk_level != 'HIGH' &&
+      secrets.DEPLOY_API == 'true'
+
+    steps:
+      - name: Checkout
+        # actions/checkout v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Setup Python
+        # actions/setup-python v5.6.0
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
+      - name: Install API dependencies
+        run: |
+          cd risk-engine
+          pip install -r requirements-api.txt
+
+      - name: Start API server in background
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          PROJECT_KEY: ${{ needs.detect.outputs.project_key }}
+          SONAR_URL:   ${{ env.SONAR_URL }}
+          API_PORT:    5000
+        run: |
+          cd risk-engine
+          nohup python3 api-server.py > api-server.log 2>&1 &
+          echo $! > api-server.pid
+          sleep 5
+          # Test health endpoint
+          curl -f http://localhost:5000/health || (cat api-server.log && exit 1)
+          echo "API server started successfully"
+
+      - name: Upload API logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: api-server-logs
+          path: risk-engine/api-server.log
+          retention-days: 7
 
   # ─────────────────────────────────────────────────────────────
   # JOB 6 - Conditional Docker deployment
