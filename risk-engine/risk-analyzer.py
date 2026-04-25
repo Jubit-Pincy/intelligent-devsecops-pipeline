@@ -572,9 +572,7 @@ html = f"""<!DOCTYPE html>
   NOTE: fa-regular (outline) icons require Font Awesome Pro.
   All icons in this report use "fas" prefix to work with the free CDN.
 -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
-      integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W=="
-      crossorigin="anonymous" referrerpolicy="no-referrer">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"
         id="chartjsScript"></script>
@@ -617,9 +615,9 @@ html[data-theme="light"] {{
   --bg3:        #F1F3F5;
   --border:     #DEE2E6;
   --border2:    #CED4DA;
-  --text:       #212529;
-  --text2:      #495057;
-  --text3:      #ADB5BD;
+  --text:       #000000;
+  --text2:      #000000;
+  --text3:      #000000;
   --accent:     #212529;
   --accent-s:   rgba(33, 37, 41, 0.04);
   --low-fg:     #2D7D46;  --low-bg:  rgba(45, 125, 70, 0.08);
@@ -841,10 +839,14 @@ a:hover {{ color: var(--text); text-decoration: underline; }}
   border-radius: var(--r);
   padding: 18px 14px;
   text-align: center;
-  transition: border-color .12s;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   cursor: default;
 }}
-.metric-tile:hover {{ border-color: var(--border2); }}
+.metric-tile:hover {{ 
+  border-color: var(--text); 
+  transform: translateY(-3px);
+  box-shadow: var(--shadow); 
+  }}
 .metric-tile .m-val {{
   font-family: var(--mono);
   font-size: 30px;
@@ -1223,7 +1225,7 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   padding: 12px 16px;
   border-radius: var(--r);
   font-family: var(--mono);
-  font-size: 10px; font-weight: 600;
+  font-size: 12px; font-weight: 600;
   letter-spacing: .08em;
   border: 1px solid var(--border);
   color: var(--text3);
@@ -1285,13 +1287,13 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
     -->
     <div class="theme-toggle" id="themeToggle">
       <button class="theme-btn" data-t="light"  onclick="setTheme('light')"  title="Light mode">
-        <i class="fas fa-sun"></i>
+        <i class="fa-solid fa-sun"></i>
       </button>
       <button class="theme-btn" data-t="dark"   onclick="setTheme('dark')"   title="Dark mode">
-        <i class="fas fa-moon"></i>
+        <i class="fa-solid fa-moon"></i>
       </button>
       <button class="theme-btn" data-t="system" onclick="setTheme('system')" title="System default">
-        <i class="fas fa-circle-half-stroke"></i>
+        <i class="fa-solid fa-circle-half-stroke"></i>
       </button>
     </div>
   </div>
