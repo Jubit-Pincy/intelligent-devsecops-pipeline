@@ -97,17 +97,25 @@ def fetch_summary_metrics():
             result[m["metric"]] = 0
     return result
 
-def fetch_issues(issue_types, ps=10):
+def fetch_issues(issue_types, ps=10, statuses=None):
+    """
+    Fetch issues from SonarCloud.
+    statuses: comma-separated string e.g. "OPEN,CONFIRMED,REOPENED" or "RESOLVED,CLOSED"
+    When statuses is None the API returns its default (open issues only).
+    """
+    params = {
+        "componentKeys": PROJECT_KEY,
+        "types": issue_types,
+        "ps": ps,
+        "p": 1,
+    }
+    if statuses:
+        params["statuses"] = statuses
     try:
-        data = sonar_get("issues/search", {
-            "componentKeys": PROJECT_KEY,
-            "types": issue_types,
-            "ps": ps,
-            "p": 1,
-        })
+        data = sonar_get("issues/search", params)
         return data.get("issues", [])
     except Exception as e:
-        print(f"  Warning: could not fetch {issue_types}: {e}")
+        print(f"  Warning: could not fetch {issue_types} ({statuses}): {e}")
         return []
 
 def fetch_hotspots(ps=10):
@@ -170,8 +178,13 @@ maintainability_rating = rating_label(metrics.get("sqale_rating", 1))
 print(f"  Bugs={bugs_count}, Vulns={vulns_count}, Hotspots={hotspots_count}")
 
 print("Fetching individual issue details …")
-bug_issues   = fetch_issues("BUG",           ps=10)
-vuln_issues  = fetch_issues("VULNERABILITY", ps=10)
+OPEN_STATUSES   = "OPEN,CONFIRMED,REOPENED"
+CLOSED_STATUSES = "RESOLVED,CLOSED"
+
+bug_issues        = fetch_issues("BUG",           ps=10, statuses=OPEN_STATUSES)
+bug_issues_closed = fetch_issues("BUG",           ps=10, statuses=CLOSED_STATUSES)
+vuln_issues        = fetch_issues("VULNERABILITY", ps=10, statuses=OPEN_STATUSES)
+vuln_issues_closed = fetch_issues("VULNERABILITY", ps=10, statuses=CLOSED_STATUSES)
 hotspot_list = fetch_hotspots(ps=10)
 
 # ─────────────────────────────────────────────────
@@ -208,6 +221,19 @@ elif risk_score < prev:
     trend = "↓ Decreasing"
 else:
     trend = "→ Stable"
+
+# ── Back-fill missing "level" on old history entries ──────────────
+# Older versions of the script didn't always save "level". Without it,
+# the chart pointBackgroundColor lookup returns grey and the tooltip
+# shows "?" for every run except the most recent ones.
+def _infer_level(score):
+    if score <= 2:   return "LOW"
+    if score <= 5:   return "MEDIUM"
+    return "HIGH"
+
+for entry in history:
+    if not entry.get("level"):
+        entry["level"] = _infer_level(entry.get("risk_score", 0))
 
 history.append({
     "timestamp":  datetime.now(IST).strftime("%d-%m-%Y %H:%M"),
@@ -312,37 +338,53 @@ def sev_badge(sev: str) -> str:
 
 _row_counter = [0]
 
-def issue_row(issue: dict, itype: str = "BUG") -> str:
+def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
     _row_counter[0] += 1
     uid = f"row-{_row_counter[0]}"
 
-    key   = issue.get("key", "")
-    msg   = issue.get("message", "—")[:150]
-    sev   = issue.get("severity", "INFO")
-    rule  = issue.get("rule", "")
-    status= issue.get("status", "OPEN")
-    line  = get_line(issue)
-    file  = get_file(issue)
+    key        = issue.get("key", "")
+    msg        = issue.get("message", "—")[:150]
+    sev        = issue.get("severity", "INFO")
+    rule       = issue.get("rule", "")
+    status     = issue.get("status", "OPEN")
+    resolution = issue.get("resolution", "")   # FIXED, FALSE-POSITIVE, WONTFIX, etc.
+    line       = get_line(issue)
+    file       = get_file(issue)
 
-    # ── Corrected SonarCloud deep-link ─────────────────────────
-    # Format: /project/issues?id=PROJECT_KEY&open=ISSUE_KEY
-    link = f"{SONAR_URL}/project/issues?id={PROJECT_KEY}&open={key}"
+    # ── SonarCloud deep-link ─────────────────────────────────────
+    # For closed/resolved issues we pass the statuses filter so the
+    # page shows the resolved view rather than the active-issues view.
+    if is_closed:
+        link = (f"{SONAR_URL}/project/issues?id={PROJECT_KEY}"
+                f"&open={key}&statuses={status}&resolved=true")
+    else:
+        link = f"{SONAR_URL}/project/issues?id={PROJECT_KEY}&open={key}"
 
     adv_title, adv_body = get_advice(rule, itype)
-
-    # Show only the filename (last component) with full path in the tooltip
     display_file = file.split("/")[-1] if file else "—"
 
+    # Resolution pill (only for closed rows)
+    res_html = ""
+    if resolution:
+        res_color = {
+            "FIXED":         "#22c55e",
+            "FALSE-POSITIVE":"#6366f1",
+            "WONTFIX":       "#f59e0b",
+            "REMOVED":       "#64748b",
+        }.get(resolution.upper(), "#64748b")
+        res_html = (f'<span class="res-chip" style="--res-fg:{res_color};">'
+                    f'{resolution}</span>')
+
     return f"""
-<tr class="issue-row" onclick="toggleRow('{uid}')">
+<tr class="issue-row{'  closed-row' if is_closed else ''}" onclick="toggleRow('{uid}')">
   <td class="td-file">
     <a href="{link}" target="_blank" onclick="event.stopPropagation()"
        class="loc-link" title="{file}">{display_file}</a>
-    <span class="line-chip">line {line}</span>
+    <span class="line-chip"><i class="fa-regular fa-code-branch"></i> L{line}</span>
   </td>
   <td class="td-path" title="{file}">{file}</td>
   <td class="td-msg">{msg}</td>
-  <td>{sev_badge(sev)}</td>
+  <td>{sev_badge(sev)}{res_html}</td>
   <td><code class="rule-code">{rule}</code></td>
   <td><span class="status-chip">{status}</span></td>
   <td class="td-expand"><span class="chevron">›</span></td>
@@ -350,10 +392,12 @@ def issue_row(issue: dict, itype: str = "BUG") -> str:
 <tr id="{uid}" class="fix-row" style="display:none;">
   <td colspan="7" class="fix-cell">
     <div class="fix-inner">
-      <div class="fix-title">🔧 {adv_title}</div>
+      <div class="fix-title"><i class="fa-regular fa-screwdriver-wrench"></i> {adv_title}</div>
       <div class="fix-body">{adv_body}</div>
       <a href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}"
-         target="_blank" class="fix-rule-link">View rule documentation →</a>
+         target="_blank" class="fix-rule-link">
+        <i class="fa-regular fa-arrow-up-right-from-square"></i> View rule documentation
+      </a>
     </div>
   </td>
 </tr>"""
@@ -381,7 +425,7 @@ def hotspot_row(hs: dict) -> str:
   <td class="td-file">
     <a href="{link}" target="_blank" onclick="event.stopPropagation()"
        class="loc-link" title="{file}">{display_file}</a>
-    <span class="line-chip">line {line}</span>
+    <span class="line-chip"><i class="fa-regular fa-code-branch"></i> L{line}</span>
   </td>
   <td class="td-path" title="{file}">{file}</td>
   <td class="td-msg">{msg}</td>
@@ -393,20 +437,18 @@ def hotspot_row(hs: dict) -> str:
 <tr id="{uid}" class="fix-row" style="display:none;">
   <td colspan="7" class="fix-cell">
     <div class="fix-inner">
-      <div class="fix-title">🔧 {adv_title}</div>
+      <div class="fix-title"><i class="fa-regular fa-screwdriver-wrench"></i> {adv_title}</div>
       <div class="fix-body">{adv_body}</div>
       <a href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}"
-         target="_blank" class="fix-rule-link">View rule documentation →</a>
+         target="_blank" class="fix-rule-link">
+        <i class="fa-regular fa-arrow-up-right-from-square"></i> View rule documentation
+      </a>
     </div>
   </td>
 </tr>"""
 
-def issues_table(rows_html: list, empty_label: str) -> str:
-    if not rows_html:
-        return f'<p class="empty-msg">No {empty_label} detected — great work!</p>'
-    return f"""
-<div class="table-wrap">
-  <table class="issue-table">
+def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> str:
+    thead = """
     <thead>
       <tr>
         <th>File</th>
@@ -417,20 +459,61 @@ def issues_table(rows_html: list, empty_label: str) -> str:
         <th>Status</th>
         <th></th>
       </tr>
-    </thead>
+    </thead>"""
+
+    if not rows_html and not closed_rows_html:
+        return f'<p class="empty-msg">No {empty_label} detected — great work!</p>'
+
+    open_block = ""
+    if rows_html:
+        open_block = f"""
+<div class="table-wrap">
+  <table class="issue-table">
+    {thead}
     <tbody>{"".join(rows_html)}</tbody>
   </table>
-  <p class="table-note">Click a row to expand remediation guidance. File links open directly in SonarCloud.</p>
+  <p class="table-note">
+    <i class="fa-regular fa-circle-info"></i>
+    Click a row to expand remediation guidance. File links open directly in SonarCloud.
+  </p>
 </div>"""
+    else:
+        open_block = f'<p class="empty-msg">No open {empty_label} — great work!</p>'
+
+    closed_block = ""
+    if closed_rows_html:
+        n = len(closed_rows_html)
+        closed_block = f"""
+<details class="closed-section">
+  <summary class="closed-summary">
+    <i class="fa-regular fa-circle-check"></i>
+    <span>Closed / Resolved {empty_label.title()}</span>
+    <span class="closed-count">{n}</span>
+  </summary>
+  <div class="table-wrap closed-table-wrap">
+    <table class="issue-table">
+      {thead}
+      <tbody>{"".join(closed_rows_html)}</tbody>
+    </table>
+    <p class="table-note">
+      <i class="fa-regular fa-circle-info"></i>
+      These issues were resolved in SonarCloud. Links open the issue record directly.
+    </p>
+  </div>
+</details>"""
+
+    return open_block + closed_block
 
 # Build HTML blocks
-bug_rows     = [issue_row(i, "BUG")           for i in bug_issues]
-vuln_rows    = [issue_row(i, "VULNERABILITY")  for i in vuln_issues]
-hs_rows      = [hotspot_row(h)                 for h in hotspot_list]
+bug_rows          = [issue_row(i, "BUG",           is_closed=False) for i in bug_issues]
+bug_rows_closed   = [issue_row(i, "BUG",           is_closed=True)  for i in bug_issues_closed]
+vuln_rows         = [issue_row(i, "VULNERABILITY",  is_closed=False) for i in vuln_issues]
+vuln_rows_closed  = [issue_row(i, "VULNERABILITY",  is_closed=True)  for i in vuln_issues_closed]
+hs_rows           = [hotspot_row(h)                                   for h in hotspot_list]
 
-bugs_html     = issues_table(bug_rows,  "bugs")
-vulns_html    = issues_table(vuln_rows, "vulnerabilities")
-hotspots_html = issues_table(hs_rows,  "hotspots")
+bugs_html     = issues_table(bug_rows,  bug_rows_closed,  "bugs")
+vulns_html    = issues_table(vuln_rows, vuln_rows_closed, "vulnerabilities")
+hotspots_html = issues_table(hs_rows,  [],               "hotspots")
 
 # Chart data
 h_labels = json.dumps([e["timestamp"]  for e in history])
@@ -445,7 +528,11 @@ type_pills = "".join(
 RISK_CSS_CLASS = {"LOW": "risk-low", "MEDIUM": "risk-med", "HIGH": "risk-high"}
 risk_cls = RISK_CSS_CLASS.get(level, "risk-low")
 
-decision_icon = {"HIGH": "🚫", "MEDIUM": "⚠️", "LOW": "✅"}.get(level, "✅")
+decision_icon_cls = {
+    "HIGH":   "fa-regular fa-circle-xmark",
+    "MEDIUM": "fa-regular fa-triangle-exclamation",
+    "LOW":    "fa-regular fa-circle-check",
+}.get(level, "fa-regular fa-circle-check")
 
 if level == "HIGH":
     summary_txt = (f"Build blocked: {vulns_count} vulnerabilities, {bugs_count} bugs, "
@@ -498,6 +585,9 @@ html = f"""<!DOCTYPE html>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- Font Awesome 6 Free (outline / regular icons) -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+      crossorigin="anonymous" referrerpolicy="no-referrer">
 <!-- Chart.js loaded with a stable integrity hash; onload/onerror handled in JS -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"
         id="chartjsScript"></script>
@@ -939,15 +1029,81 @@ a:hover {{ text-decoration: underline; }}
 }}
 .loc-link:hover {{ text-decoration: underline !important; }}
 .line-chip {{
-  display: inline-block;
+  display: inline-flex; align-items: center; gap: 4px;
   font-family: var(--mono);
   font-size: 10px;
-  color: var(--text3);
-  margin-top: 2px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 3px;
+  background: var(--accent-s);
+  border: 1px solid rgba(99,102,241,0.25);
+  border-radius: 4px;
+  padding: 1px 6px;
+}}
+html[data-theme="light"] .line-chip {{
+  color: var(--accent);
+  background: rgba(79,70,229,0.08);
+  border-color: rgba(79,70,229,0.2);
+}}
+/* Resolution chip for closed issues */
+.res-chip {{
+  display: inline-block;
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--res-fg);
+  background: color-mix(in srgb, var(--res-fg) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--res-fg) 28%, transparent);
+  vertical-align: middle;
+}}
+/* Closed issue rows — slightly dimmed */
+.closed-row td {{ opacity: 0.72; }}
+.closed-row:hover td {{ opacity: 1; }}
+/* Closed/Resolved section (collapsible) */
+.closed-section {{
+  margin-top: 20px;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  overflow: hidden;
+}}
+.closed-summary {{
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  color: var(--text2);
   background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0 5px;
+  user-select: none;
+  list-style: none;
+}}
+.closed-summary::-webkit-details-marker {{ display: none; }}
+.closed-summary i {{ color: #22c55e; font-size: 13px; }}
+.closed-summary::after {{
+  content: '›';
+  margin-left: auto;
+  font-size: 16px;
+  color: var(--text3);
+  transition: transform .2s;
+}}
+details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
+.closed-count {{
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px;
+  border-radius: 10px; padding: 0 6px;
+  font-size: 10px; font-weight: 700;
+  background: rgba(34,197,94,0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34,197,94,0.3);
+}}
+.closed-table-wrap {{
+  border-top: 1px solid var(--border);
 }}
 .rule-code {{
   font-family: var(--mono);
@@ -1026,12 +1182,16 @@ a:hover {{ text-decoration: underline; }}
 }}
 
 /* ═══════════════════════════════════════════════
-   Links row
+   Links row — evenly spaced, equal-width tiles
 ═══════════════════════════════════════════════ */
-.links-row {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+.links-row {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}}
 .lnk {{
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 18px;
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 12px 16px;
   border-radius: 8px;
   font-family: var(--mono);
   font-size: 11px; font-weight: 600;
@@ -1040,7 +1200,9 @@ a:hover {{ text-decoration: underline; }}
   color: var(--text2);
   background: var(--bg3);
   transition: all .15s;
+  text-align: center;
 }}
+.lnk i {{ font-size: 14px; flex-shrink: 0; }}
 .lnk:hover {{
   background: var(--accent-s);
   border-color: rgba(99,102,241,.3);
@@ -1112,10 +1274,18 @@ a:hover {{ text-decoration: underline; }}
   <div class="card">
     <div class="card-title">Quick Links</div>
     <div class="links-row">
-      <a class="lnk" href="{SONAR_DASHBOARD}" target="_blank">⬡ SonarCloud Dashboard</a>
-      <a class="lnk" href="{PROJECT_REPO}" target="_blank">⌥ GitHub Repository</a>
-      <a class="lnk" href="{RUNNING_APP}" target="_blank">▶ Running Application</a>
-      <a class="lnk" href="{GITHUB_RUN_URL}" target="_blank">⚙ CI/CD Run</a>
+      <a class="lnk" href="{SONAR_DASHBOARD}" target="_blank">
+        <i class="fa-regular fa-shield-halved"></i> SonarCloud Dashboard
+      </a>
+      <a class="lnk" href="{PROJECT_REPO}" target="_blank">
+        <i class="fa-regular fa-code-branch"></i> GitHub Repository
+      </a>
+      <a class="lnk" href="{RUNNING_APP}" target="_blank">
+        <i class="fa-regular fa-circle-play"></i> Running Application
+      </a>
+      <a class="lnk" href="{GITHUB_RUN_URL}" target="_blank">
+        <i class="fa-regular fa-gear"></i> CI/CD Run
+      </a>
     </div>
   </div>
 
@@ -1154,7 +1324,7 @@ a:hover {{ text-decoration: underline; }}
   <div class="card">
     <div class="card-title">Governance Decision</div>
     <div class="decision-banner {risk_cls}">
-      <div class="d-icon">{decision_icon}</div>
+      <div class="d-icon"><i class="{decision_icon_cls}"></i></div>
       <div class="d-body">
         <div class="d-action">{decision}</div>
         <div class="d-summary">{summary_txt}</div>
@@ -1292,12 +1462,13 @@ var CHART_DATA = {{
 var chartInstance = null;
 
 function levelColor(l, alpha) {{
+  var key = (l || '').toUpperCase().trim();
   var map = {{
     HIGH:   'rgba(239,68,68,'   + alpha + ')',
     MEDIUM: 'rgba(245,158,11,' + alpha + ')',
     LOW:    'rgba(34,197,94,'  + alpha + ')'
   }};
-  return map[l] || ('rgba(148,163,184,' + alpha + ')');
+  return map[key] || ('rgba(148,163,184,' + alpha + ')');
 }}
 
 function buildChart(theme) {{
@@ -1349,7 +1520,10 @@ function buildChart(theme) {{
           padding: 10,
           callbacks: {{
             afterBody: function(items) {{
-              return ['Level: ' + (CHART_DATA.levels[items[0].dataIndex] || '?')];
+              var idx = items[0].dataIndex;
+              var raw = (CHART_DATA.levels[idx] || '').toUpperCase().trim();
+              var label = raw || 'UNKNOWN';
+              return ['Risk Level: ' + label];
             }}
           }}
         }}
