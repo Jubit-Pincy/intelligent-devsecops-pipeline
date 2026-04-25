@@ -1611,8 +1611,8 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
       </div>
     </div>
     <div class="formula-line">
-      Risk = (Bugs × {WEIGHT_BUGS}) + (Vulns × {WEIGHT_VULNS}) + (Hotspots × {WEIGHT_HOTSPOTS})
-      &nbsp;=&nbsp; ({bugs_count}×{WEIGHT_BUGS}) + ({vulns_count}×{WEIGHT_VULNS}) + ({hotspots_count}×{WEIGHT_HOTSPOTS})
+      Risk = (Bugs * {WEIGHT_BUGS}) + (Vulns * {WEIGHT_VULNS}) + (Hotspots * {WEIGHT_HOTSPOTS})
+      &nbsp;=&nbsp; ({bugs_count}*{WEIGHT_BUGS}) + ({vulns_count}*{WEIGHT_VULNS}) + ({hotspots_count}*{WEIGHT_HOTSPOTS})
       &nbsp;=&nbsp; <strong style="color:var(--text);">{risk_score}</strong>
     </div>
   </div>
@@ -1651,74 +1651,6 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 </div>
 
 <script>
-/* ══════════════════════════════════════════════════════
-   Theme management
-══════════════════════════════════════════════════════ */
-var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
-var API_ENDPOINT = '{API_ENDPOINT}';
-
-function resolveTheme(pref) {{
-  if (pref === 'system') return MEDIA.matches ? 'dark' : 'light';
-  return pref || 'dark';
-}}
-
-function syncToggleButtons(saved) {{
-  document.querySelectorAll('.theme-btn').forEach(function(b) {{
-    b.classList.toggle('active', b.dataset.t === saved);
-  }});
-}}
-
-function applyTheme(saved) {{
-  var resolved = resolveTheme(saved);
-  document.documentElement.setAttribute('data-theme', resolved);
-  syncToggleButtons(saved);
-  setTimeout(function() {{
-    rebuildChart(resolved);
-    rebuildLangChart();
-  }}, 100);
-}}
-
-function setTheme(pref) {{
-  try {{ localStorage.setItem('dso-theme', pref); }} catch(e) {{}}
-  applyTheme(pref);
-}}
-
-// Initialize theme on load
-(function() {{
-  var saved = window.__dsoSavedPref || 'dark';
-  syncToggleButtons(saved);
-}})();
-
-MEDIA.addEventListener('change', function() {{
-  var saved = '';
-  try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch(e) {{}}
-  if ((saved || 'system') === 'system') applyTheme('system');
-}});
-
-/* Tabs */
-function switchTab(name, btn) {{
-  document.querySelectorAll('.tab-pane').forEach(function(p) {{
-    p.classList.remove('active');
-  }});
-  document.querySelectorAll('.tab-btn').forEach(function(b) {{
-    b.classList.remove('active');
-  }});
-  var pane = document.getElementById('tab-' + name);
-  if (pane) pane.classList.add('active');
-  btn.classList.add('active');
-}}
-
-/* Fix row toggle */
-function toggleRow(uid) {{
-  var row = document.getElementById(uid);
-  if (!row) return;
-  var trig = row.previousElementSibling;
-  var isOpen = row.classList.contains('open');
-  row.classList.toggle('open', !isOpen);
-  row.style.display = isOpen ? 'none' : 'table-row';
-  if (trig) trig.classList.toggle('expanded', !isOpen);
-}}
-  <script>
 /* ══════════════════════════════════════════════════════
    Theme management
 ══════════════════════════════════════════════════════ */
