@@ -85,7 +85,7 @@ def sonar_get(endpoint, params=None):
 def fetch_summary_metrics():
     keys = ("bugs,vulnerabilities,security_hotspots,"
             "code_smells,coverage,duplicated_lines_density,"
-            "reliability_rating,security_rating,sqale_rating")
+            "reliability_rating,security_rating,sqale_rating,ncloc_language_distribution")
     data = sonar_get("measures/component", {
         "component": PROJECT_KEY,
         "metricKeys": keys,
@@ -93,10 +93,14 @@ def fetch_summary_metrics():
     })
     result = {}
     for m in data.get("component", {}).get("measures", []):
-        try:
-            result[m["metric"]] = float(m["value"])
-        except (KeyError, ValueError):
-            result[m["metric"]] = 0
+        metric_key = m["metric"]
+        if metric_key == "ncloc_language_distribution":
+            result[metric_key] = m.get("value", "")
+        else:
+            try:
+                result[metric_key] = float(m["value"])
+            except (KeyError, ValueError):
+                result[metric_key] = 0
     return result
 
 def fetch_issues(issue_types, ps=10, statuses=None):
@@ -146,6 +150,36 @@ def get_file(issue: dict) -> str:
         return parts[1]
     return comp
 
+def mark_issue_resolved(issue_key: str, transition: str = "wontfix", comment: str = ""):
+    """
+    Mark an issue as resolved in SonarCloud.
+    transition: 'wontfix', 'falsepositive', or 'resolve'
+    """
+    try:
+        endpoint = "issues/do_transition"
+        params = {
+            "issue": issue_key,
+            "transition": transition
+        }
+        r = requests.post(f"{SONAR_URL}/api/{endpoint}",
+                         params=params, auth=AUTH, timeout=30)
+        r.raise_for_status()
+        
+        # Add comment if provided
+        if comment:
+            comment_endpoint = "issues/add_comment"
+            comment_params = {
+                "issue": issue_key,
+                "text": comment
+            }
+            requests.post(f"{SONAR_URL}/api/{comment_endpoint}",
+                        params=comment_params, auth=AUTH, timeout=30)
+        
+        return True
+    except Exception as e:
+        print(f"  Warning: could not resolve issue {issue_key}: {e}")
+        return False
+
 # ─────────────────────────────────────────────────
 # Fetch data
 # ─────────────────────────────────────────────────
@@ -158,6 +192,19 @@ hotspots_count  = int(metrics.get("security_hotspots", 0))
 smells_count    = int(metrics.get("code_smells", 0))
 coverage_pct    = round(metrics.get("coverage", 0), 1)
 duplication_pct = round(metrics.get("duplicated_lines_density", 0), 1)
+
+# Parse language distribution
+lang_dist_raw = metrics.get("ncloc_language_distribution", "")
+language_data = []
+if lang_dist_raw:
+    # Format: "java=1234;py=567;js=890"
+    for pair in lang_dist_raw.split(";"):
+        if "=" in pair:
+            lang, lines = pair.split("=", 1)
+            language_data.append({"lang": lang, "lines": int(lines)})
+    # Override DETECTED_TYPES with actual languages if available
+    if language_data:
+        DETECTED_TYPES = [item["lang"] for item in language_data]
 
 def rating_label(val):
     return {1: "A", 2: "B", 3: "C", 4: "D", 5: "E"}.get(int(val), "?")
@@ -383,6 +430,19 @@ def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
          target="_blank" class="fix-rule-link">
         <i class="fas fa-arrow-up-right-from-square"></i> View rule documentation
       </a>
+      {'' if is_closed else f'''
+      <div class="resolve-actions">
+        <button class="resolve-btn" onclick="resolveIssue('{key}', 'wontfix', event)">
+          <i class="fas fa-ban"></i> Won't Fix
+        </button>
+        <button class="resolve-btn" onclick="resolveIssue('{key}', 'falsepositive', event)">
+          <i class="fas fa-flag"></i> False Positive
+        </button>
+        <button class="resolve-btn resolve-btn-primary" onclick="resolveIssue('{key}', 'resolve', event)">
+          <i class="fas fa-check"></i> Mark Resolved
+        </button>
+      </div>
+      '''}
     </div>
   </td>
 </tr>"""
@@ -502,6 +562,7 @@ hotspots_html = issues_table(hs_rows,  [],               "hotspots")
 h_labels = json.dumps([e["timestamp"]  for e in history])
 h_scores = json.dumps([e["risk_score"] for e in history])
 h_levels = json.dumps([e.get("level","") for e in history])
+lang_chart_data = json.dumps(language_data)
 
 # Misc
 type_pills = "".join(
@@ -1269,6 +1330,119 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   letter-spacing: .08em;
   text-transform: uppercase;
 }}
+
+/* ═══════════════════════════════════════════════
+   Language chart
+═══════════════════════════════════════════════ */
+.lang-chart-container {{
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 28px;
+  align-items: center;
+}}
+@media (max-width: 768px) {{
+  .lang-chart-container {{ grid-template-columns: 1fr; }}
+}}
+.lang-chart-wrap {{
+  position: relative;
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}}
+.lang-legend {{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}}
+.lang-legend-item {{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--r);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+}}
+.lang-color {{
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}}
+.lang-info {{
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}}
+.lang-name {{
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}}
+.lang-stats {{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}}
+.lang-pct {{
+  font-weight: 600;
+  color: var(--text2);
+}}
+
+/* ═══════════════════════════════════════════════
+   Resolve buttons
+═══════════════════════════════════════════════ */
+.resolve-actions {{
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}}
+.resolve-btn {{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  cursor: pointer;
+  transition: all .12s;
+  text-transform: uppercase;
+}}
+.resolve-btn:hover {{
+  background: var(--border);
+  color: var(--text2);
+  border-color: var(--border2);
+}}
+.resolve-btn i {{
+  font-size: 10px;
+}}
+.resolve-btn-primary {{
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}}
+.resolve-btn-primary:hover {{
+  opacity: 0.85;
+  color: var(--bg);
+}}
 </style>
 </head>
 <body>
@@ -1328,6 +1502,17 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
       <a class="lnk" href="{RUNNING_APP}" target="_blank">
         <i class="fas fa-circle-play"></i> Application
       </a>
+    </div>
+  </div>
+
+  <!-- Language Distribution -->
+  <div class="card">
+    <div class="card-title">Language Distribution</div>
+    <div class="lang-chart-container">
+      <div class="lang-chart-wrap">
+        <canvas id="langChart"></canvas>
+      </div>
+      <div id="langLegend" class="lang-legend"></div>
     </div>
   </div>
 
@@ -1437,6 +1622,7 @@ function applyTheme(saved) {{
   document.documentElement.setAttribute('data-theme', resolved);
   syncToggleButtons(saved);
   rebuildChart(resolved);
+  rebuildLangChart();
 }}
 
 function setTheme(pref) {{
@@ -1479,6 +1665,117 @@ function toggleRow(uid) {{
   row.classList.toggle('open', !open);
   row.style.display = open ? 'none' : 'table-row';
   trig.classList.toggle('expanded', !open);
+}}
+
+/* ══════════════════════════════════════════════════════
+   Resolve issue in SonarCloud
+══════════════════════════════════════════════════════ */
+function resolveIssue(issueKey, transition, event) {{
+  event.stopPropagation();
+  
+  var confirmMsg = 'Mark this issue as "' + transition + '" in SonarCloud?';
+  if (!confirm(confirmMsg)) return;
+  
+  var btn = event.target.closest('.resolve-btn');
+  if (btn) {{
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+  }}
+  
+  // In static HTML, we can't make API calls directly
+  // This would need a backend endpoint
+  alert('This feature requires backend API integration.\\n\\n' +
+        'To resolve issue ' + issueKey + ':\\n' +
+        '1. Go to SonarCloud\\n' +
+        '2. Find the issue\\n' +
+        '3. Use the "Resolve" dropdown\\n' +
+        '4. Select: ' + transition);
+  
+  if (btn) {{
+    btn.disabled = false;
+    btn.innerHTML = btn.dataset.original || 'Resolve';
+  }}
+}}
+
+/* ══════════════════════════════════════════════════════
+   Language distribution chart
+══════════════════════════════════════════════════════ */
+var LANG_DATA = {lang_chart_data};
+var langChartInstance = null;
+
+var LANG_COLORS = [
+  '#FF3B30', '#FFD60A', '#32D74B', '#5E5CE6',
+  '#FF9F0A', '#00C7BE', '#BF5AF2', '#FF375F',
+  '#30D158', '#64D2FF', '#FFD70A', '#5E5CE6'
+];
+
+function buildLangChart() {{
+  if (!LANG_DATA || LANG_DATA.length === 0) return;
+  
+  var canvas = document.getElementById('langChart');
+  if (!canvas) return;
+  if (typeof Chart === 'undefined') return;
+  
+  var total = LANG_DATA.reduce(function(sum, item) {{ return sum + item.lines; }}, 0);
+  
+  var labels = LANG_DATA.map(function(item) {{ return item.lang.toUpperCase(); }});
+  var data = LANG_DATA.map(function(item) {{ return item.lines; }});
+  var colors = LANG_DATA.map(function(item, idx) {{ return LANG_COLORS[idx % LANG_COLORS.length]; }});
+  
+  if (langChartInstance) {{ langChartInstance.destroy(); langChartInstance = null; }}
+  
+  langChartInstance = new Chart(canvas.getContext('2d'), {{
+    type: 'doughnut',
+    data: {{
+      labels: labels,
+      datasets: [{{
+        data: data,
+        backgroundColor: colors,
+        borderWidth: 0
+      }}]
+    }},
+    options: {{
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '65%',
+      plugins: {{
+        legend: {{ display: false }},
+        tooltip: {{
+          callbacks: {{
+            label: function(context) {{
+              var pct = ((context.parsed / total) * 100).toFixed(1);
+              return context.label + ': ' + pct + '% (' + context.parsed.toLocaleString() + ' lines)';
+            }}
+          }}
+        }}
+      }}
+    }}
+  }});
+  
+  // Build legend
+  var legend = document.getElementById('langLegend');
+  if (legend) {{
+    legend.innerHTML = LANG_DATA.map(function(item, idx) {{
+      var pct = ((item.lines / total) * 100).toFixed(1);
+      var color = LANG_COLORS[idx % LANG_COLORS.length];
+      return '<div class="lang-legend-item">' +
+        '<div class="lang-color" style="background:' + color + ';"></div>' +
+        '<div class="lang-info">' +
+        '<span class="lang-name">' + item.lang.toUpperCase() + '</span>' +
+        '<div class="lang-stats">' +
+        '<span class="lang-pct">' + pct + '%</span>' +
+        '<span>' + item.lines.toLocaleString() + ' lines</span>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
+    }}).join('');
+  }}
+}}
+
+function rebuildLangChart() {{
+  if (typeof Chart !== 'undefined') {{
+    buildLangChart();
+  }}
 }}
 
 /* ══════════════════════════════════════════════════════
@@ -1589,6 +1886,7 @@ function rebuildChart(theme) {{
   function attempt() {{
     if (typeof Chart !== 'undefined') {{
       buildChart(theme);
+      buildLangChart();
       return;
     }}
     if (Date.now() - start > MAX_WAIT_MS) {{
