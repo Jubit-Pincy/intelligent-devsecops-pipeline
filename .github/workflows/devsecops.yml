@@ -468,7 +468,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       needs.risk.outputs.risk_level != 'HIGH' &&
-      secrets.DEPLOY_API == 'true'
+      vars.DEPLOY_API == 'true'
 
     steps:
       - name: Checkout
