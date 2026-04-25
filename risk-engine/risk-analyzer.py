@@ -1,20 +1,7 @@
 """
 risk-analyzer.py
 Intelligent Risk-Adaptive DevSecOps – Risk Engine v4
-Fixes in this version:
-  • Theme switcher works in Jenkins / static HTML (inline <script> in <head>
-    applies theme before first paint — no flash of wrong theme)
-  • SonarCloud issue links corrected to /project/issues?id=…&open=…
-  • SonarCloud hotspot links corrected to /project/security_hotspots?id=…&hotspots=…
-  • Risk trend chart fixed: Chart.js CDN load is awaited before init so the
-    chart always renders even in offline / slow CDN environments
-  • File name and line number shown more prominently in separate columns
-  • Line number now read from textRange.startLine (fixes dash issue)
-  • Remediation guidance per issue type / rule
-  • Polyglot-aware, full issue detail tables
-  • FIXED: Font Awesome icons now use fas (solid) — fa-regular requires FA Pro
-  • FIXED: Theme toggle emojis replaced with FA solid icons (fa-sun, fa-moon, fa-circle-half-stroke)
-  • FIXED: Color scheme updated to Obsidian Minimalist Palette
+UI Updated to match the new Security Dashboard Design.
 """
 
 from datetime import datetime, timezone, timedelta
@@ -150,36 +137,6 @@ def get_file(issue: dict) -> str:
         return parts[1]
     return comp
 
-def mark_issue_resolved(issue_key: str, transition: str = "wontfix", comment: str = ""):
-    """
-    Mark an issue as resolved in SonarCloud.
-    transition: 'wontfix', 'falsepositive', or 'resolve'
-    """
-    try:
-        endpoint = "issues/do_transition"
-        params = {
-            "issue": issue_key,
-            "transition": transition
-        }
-        r = requests.post(f"{SONAR_URL}/api/{endpoint}",
-                         params=params, auth=AUTH, timeout=30)
-        r.raise_for_status()
-        
-        # Add comment if provided
-        if comment:
-            comment_endpoint = "issues/add_comment"
-            comment_params = {
-                "issue": issue_key,
-                "text": comment
-            }
-            requests.post(f"{SONAR_URL}/api/{comment_endpoint}",
-                        params=comment_params, auth=AUTH, timeout=30)
-        
-        return True
-    except Exception as e:
-        print(f"  Warning: could not resolve issue {issue_key}: {e}")
-        return False
-
 # ─────────────────────────────────────────────────
 # Fetch data
 # ─────────────────────────────────────────────────
@@ -197,12 +154,10 @@ duplication_pct = round(metrics.get("duplicated_lines_density", 0), 1)
 lang_dist_raw = metrics.get("ncloc_language_distribution", "")
 language_data = []
 if lang_dist_raw:
-    # Format: "java=1234;py=567;js=890"
     for pair in lang_dist_raw.split(";"):
         if "=" in pair:
             lang, lines = pair.split("=", 1)
             language_data.append({"lang": lang, "lines": int(lines)})
-    # Override DETECTED_TYPES with actual languages if available
     if language_data:
         DETECTED_TYPES = [item["lang"] for item in language_data]
 
@@ -221,9 +176,9 @@ CLOSED_STATUSES = "RESOLVED,CLOSED"
 
 bug_issues        = fetch_issues("BUG",           ps=10, statuses=OPEN_STATUSES)
 bug_issues_closed = fetch_issues("BUG",           ps=10, statuses=CLOSED_STATUSES)
-vuln_issues        = fetch_issues("VULNERABILITY", ps=10, statuses=OPEN_STATUSES)
-vuln_issues_closed = fetch_issues("VULNERABILITY", ps=10, statuses=CLOSED_STATUSES)
-hotspot_list = fetch_hotspots(ps=10)
+vuln_issues       = fetch_issues("VULNERABILITY", ps=10, statuses=OPEN_STATUSES)
+vuln_issues_closed= fetch_issues("VULNERABILITY", ps=10, statuses=CLOSED_STATUSES)
+hotspot_list      = fetch_hotspots(ps=10)
 
 # ─────────────────────────────────────────────────
 # Risk scoring
@@ -282,14 +237,13 @@ with open(history_file, "w") as f:
 # ─────────────────────────────────────────────────
 exit_code = 0
 if level == "HIGH":
-    decision  = "BUILD BLOCKED — HIGH RISK"
+    decision  = "BUILD BLOCKED"
     exit_code = 1
 elif level == "MEDIUM":
-    decision = ("MANUAL REVIEW REQUIRED — Risk Increasing"
-                if "Increasing" in trend else "APPROVED WITH WARNINGS")
+    decision = ("Conditional Approval"
+                if "Increasing" not in trend else "Manual Review Required")
 else:
-    decision = ("APPROVED — Monitor Trend"
-                if "Increasing" in trend else "APPROVED — All Clear")
+    decision = "Approved"
 
 print(f"Decision: {decision}  Trend: {trend}")
 
@@ -354,29 +308,21 @@ def get_advice(rule: str, issue_type: str) -> tuple:
 # ─────────────────────────────────────────────────
 # HTML rendering helpers
 # ─────────────────────────────────────────────────
-# Obsidian Minimalist colors for severity badges
-SEV_META = {
-    "BLOCKER":  ("#FF3B30", "#1a0000", "#3a0000"),
-    "CRITICAL": ("#FF3B30", "#1a0000", "#3a0000"),
-    "MAJOR":    ("#FFD60A", "#1a1500", "#3a2e00"),
-    "MINOR":    ("#888888", "#111111", "#1F1F1F"),
-    "INFO":     ("#888888", "#111111", "#1F1F1F"),
-    "HIGH":     ("#FF3B30", "#1a0000", "#3a0000"),
-    "MEDIUM":   ("#FFD60A", "#1a1500", "#3a2e00"),
-    "LOW":      ("#32D74B", "#001a05", "#003a0d"),
-}
-
 def sev_badge(sev: str) -> str:
     s = (sev or "INFO").upper()
-    fg, _, _ = SEV_META.get(s, ("#888888", "#111111", "#1F1F1F"))
-    return f'<span class="badge" style="--badge-fg:{fg};">{s}</span>'
+    fg = {
+        "BLOCKER":  "#FF3B30",
+        "CRITICAL": "#FF3B30",
+        "MAJOR":    "#FFD60A",
+        "MINOR":    "#5E9CFF",
+        "INFO":     "#888888",
+        "HIGH":     "#FF3B30",
+        "MEDIUM":   "#FFD60A",
+        "LOW":      "#15803D",
+    }.get(s, "#888888")
+    return f'<span class="badge" style="--badge-fg: {fg};">{s}</span>'
 
-_row_counter = [0]
-
-def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
-    _row_counter[0] += 1
-    uid = f"row-{_row_counter[0]}"
-
+def issue_row(issue: dict, itype: str = "BUG", kind: str = "bugs", is_closed: bool = False) -> str:
     key        = issue.get("key", "")
     msg        = issue.get("message", "—")[:150]
     sev        = issue.get("severity", "INFO")
@@ -389,68 +335,51 @@ def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
     if is_closed:
         link = (f"{SONAR_URL}/project/issues?id={PROJECT_KEY}"
                 f"&open={key}&statuses={status}&resolved=true")
-    else:
-        link = f"{SONAR_URL}/project/issues?id={PROJECT_KEY}&open={key}"
+        res_color = {
+            "FIXED":         "#15803D",
+            "FALSE-POSITIVE":"#6B6883",
+            "WONTFIX":       "#B45309",
+            "REMOVED":       "#6B6883",
+        }.get(resolution.upper(), "#6B6883")
+        res_html = f'<span class="res-chip" style="--res-fg:{res_color};">{resolution}</span>' if resolution else ''
+        
+        return f"""
+        <tr class="closed-row" onclick="window.open('{link}', '_blank')">
+          <td>{sev_badge(sev)}</td>
+          <td>{msg}</td>
+          <td>{res_html}</td>
+          <td><span class="rule-code">{rule}</span></td>
+        </tr>"""
 
+    link = f"{SONAR_URL}/project/issues?id={PROJECT_KEY}&open={key}"
     adv_title, adv_body = get_advice(rule, itype)
     display_file = file.split("/")[-1] if file else "—"
+    uid = f"fix-{key}"
 
-    res_html = ""
-    if resolution:
-        res_color = {
-            "FIXED":         "#32D74B",
-            "FALSE-POSITIVE":"#888888",
-            "WONTFIX":       "#FFD60A",
-            "REMOVED":       "#888888",
-        }.get(resolution.upper(), "#888888")
-        res_html = (f'<span class="res-chip" style="--res-fg:{res_color};">'
-                    f'{resolution}</span>')
-
-    # FIX: use fas (solid) — fa-regular requires Font Awesome Pro
     return f"""
-<tr class="issue-row{'  closed-row' if is_closed else ''}" onclick="toggleRow('{uid}')">
-  <td class="td-file">
-    <a href="{link}" target="_blank" onclick="event.stopPropagation()"
-       class="loc-link" title="{file}">{display_file}</a>
-    <span class="line-chip"><i class="fas fa-code-branch"></i> L{line}</span>
-  </td>
-  <td class="td-path" title="{file}">{file}</td>
+<tr class="issue-row" onclick="toggleRow('{uid}')" id="row-{key}">
+  <td>{sev_badge(sev)}</td>
   <td class="td-msg">{msg}</td>
-  <td>{sev_badge(sev)}{res_html}</td>
-  <td><code class="rule-code">{rule}</code></td>
+  <td class="td-file"><a class="loc-link" href="{link}" target="_blank" onclick="event.stopPropagation();">{display_file}</a><span class="line-chip"><i class="fas fa-hashtag"></i>{line}</span></td>
+  <td><span class="rule-code">{rule}</span></td>
   <td><span class="status-chip">{status}</span></td>
   <td class="td-expand"><span class="chevron">›</span></td>
 </tr>
-<tr id="{uid}" class="fix-row" style="display:none;">
-  <td colspan="7" class="fix-cell">
-    <div class="fix-inner">
-      <div class="fix-title"><i class="fas fa-screwdriver-wrench"></i> {adv_title}</div>
-      <div class="fix-body">{adv_body}</div>
-      <a href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}"
-         target="_blank" class="fix-rule-link">
-        <i class="fas fa-arrow-up-right-from-square"></i> View rule documentation
-      </a>
-      {'' if is_closed else f'''
-      <div class="resolve-actions">
-        <button class="resolve-btn" onclick="resolveIssue('{key}', 'wontfix', event)">
-          <i class="fas fa-ban"></i> Won't Fix
-        </button>
-        <button class="resolve-btn" onclick="resolveIssue('{key}', 'falsepositive', event)">
-          <i class="fas fa-flag"></i> False Positive
-        </button>
-        <button class="resolve-btn resolve-btn-primary" onclick="resolveIssue('{key}', 'resolve', event)">
-          <i class="fas fa-check"></i> Mark Resolved
-        </button>
-      </div>
-      '''}
+<tr class="fix-row" id="{uid}"><td class="fix-cell" colspan="6">
+  <div class="fix-inner">
+    <div class="fix-title"><i class="fas fa-wrench"></i> {adv_title}</div>
+    <div class="fix-body">{adv_body}</div>
+    <a class="fix-rule-link" href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}" target="_blank" onclick="event.stopPropagation();"><i class="fas fa-book"></i> View rule documentation</a>
+    <div class="resolve-actions" role="group" aria-label="Resolve issue">
+      <button class="resolve-btn resolve-btn-primary" onclick="resolveIssue('{key}','FIXED','{kind}',event)"><i class="fas fa-check"></i> Mark as Fixed</button>
+      <button class="resolve-btn" onclick="resolveIssue('{key}','FALSE-POSITIVE','{kind}',event)"><i class="fas fa-circle-xmark"></i> False Positive</button>
+      <button class="resolve-btn" onclick="resolveIssue('{key}','WONTFIX','{kind}',event)"><i class="fas fa-ban"></i> Won't Fix</button>
+      <button class="resolve-btn" onclick="resolveIssue('{key}','CONFIRM','{kind}',event)"><i class="fas fa-flag"></i> Confirm</button>
     </div>
-  </td>
-</tr>"""
+  </div>
+</td></tr>"""
 
-def hotspot_row(hs: dict) -> str:
-    _row_counter[0] += 1
-    uid = f"row-{_row_counter[0]}"
-
+def hotspot_row(hs: dict, kind: str = "hotspots") -> str:
     key      = hs.get("key", "")
     msg      = hs.get("message", "—")[:150]
     prob     = hs.get("vulnerabilityProbability", "LOW")
@@ -459,103 +388,78 @@ def hotspot_row(hs: dict) -> str:
     file     = get_file(hs)
 
     link = f"{SONAR_URL}/project/security_hotspots?id={PROJECT_KEY}&hotspots={key}"
-
     adv_title, adv_body = get_advice(rule, "HOTSPOT")
     display_file = file.split("/")[-1] if file else "—"
+    uid = f"fix-{key}"
 
     return f"""
-<tr class="issue-row" onclick="toggleRow('{uid}')">
-  <td class="td-file">
-    <a href="{link}" target="_blank" onclick="event.stopPropagation()"
-       class="loc-link" title="{file}">{display_file}</a>
-    <span class="line-chip"><i class="fas fa-code-branch"></i> L{line}</span>
-  </td>
-  <td class="td-path" title="{file}">{file}</td>
-  <td class="td-msg">{msg}</td>
+<tr class="issue-row" onclick="toggleRow('{uid}')" id="row-{key}">
   <td>{sev_badge(prob)}</td>
-  <td><code class="rule-code">{rule}</code></td>
+  <td class="td-msg">{msg}</td>
+  <td class="td-file"><a class="loc-link" href="{link}" target="_blank" onclick="event.stopPropagation();">{display_file}</a><span class="line-chip"><i class="fas fa-hashtag"></i>{line}</span></td>
+  <td><span class="rule-code">{rule}</span></td>
   <td><span class="status-chip">TO_REVIEW</span></td>
   <td class="td-expand"><span class="chevron">›</span></td>
 </tr>
-<tr id="{uid}" class="fix-row" style="display:none;">
-  <td colspan="7" class="fix-cell">
-    <div class="fix-inner">
-      <div class="fix-title"><i class="fas fa-screwdriver-wrench"></i> {adv_title}</div>
-      <div class="fix-body">{adv_body}</div>
-      <a href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}"
-         target="_blank" class="fix-rule-link">
-        <i class="fas fa-arrow-up-right-from-square"></i> View rule documentation
-      </a>
+<tr class="fix-row" id="{uid}"><td class="fix-cell" colspan="6">
+  <div class="fix-inner">
+    <div class="fix-title"><i class="fas fa-wrench"></i> {adv_title}</div>
+    <div class="fix-body">{adv_body}</div>
+    <a class="fix-rule-link" href="https://rules.sonarsource.com/search?languages=&tags=&q={rule}" target="_blank" onclick="event.stopPropagation();"><i class="fas fa-book"></i> View rule documentation</a>
+    <div class="resolve-actions" role="group" aria-label="Resolve issue">
+      <button class="resolve-btn resolve-btn-primary" onclick="resolveIssue('{key}','FIXED','{kind}',event)"><i class="fas fa-check"></i> Mark as Fixed</button>
+      <button class="resolve-btn" onclick="resolveIssue('{key}','FALSE-POSITIVE','{kind}',event)"><i class="fas fa-circle-xmark"></i> False Positive</button>
+      <button class="resolve-btn" onclick="resolveIssue('{key}','WONTFIX','{kind}',event)"><i class="fas fa-ban"></i> Won't Fix</button>
+      <button class="resolve-btn" onclick="resolveIssue('{key}','CONFIRM','{kind}',event)"><i class="fas fa-flag"></i> Confirm</button>
     </div>
-  </td>
-</tr>"""
+  </div>
+</td></tr>"""
 
-def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> str:
-    thead = """
-    <thead>
-      <tr>
-        <th>File</th>
-        <th>Full Path</th>
-        <th>Message</th>
-        <th>Severity</th>
-        <th>Rule</th>
-        <th>Status</th>
-        <th></th>
-      </tr>
-    </thead>"""
+def issues_table(rows_html: list, closed_rows_html: list, kind: str) -> str:
+    thead_open = "<thead><tr><th>Severity</th><th>Issue</th><th>Location</th><th>Rule</th><th>Status</th><th></th></tr></thead>"
+    thead_closed = "<thead><tr><th>Severity</th><th>Issue</th><th>Resolution</th><th>Rule</th></tr></thead>"
 
     if not rows_html and not closed_rows_html:
-        return f'<p class="empty-msg">No {empty_label} detected — great work!</p>'
+        return f'<div class="empty-msg">No {kind} detected — great work!</div>'
 
     open_block = ""
     if rows_html:
         open_block = f"""
 <div class="table-wrap">
   <table class="issue-table">
-    {thead}
+    {thead_open}
     <tbody>{"".join(rows_html)}</tbody>
   </table>
-  <p class="table-note">
-    <i class="fas fa-circle-info"></i>
-    Click a row to expand remediation guidance. File links open directly in SonarCloud.
-  </p>
-</div>"""
+</div>
+<div class="table-note"><i class="fas fa-circle-info"></i> Click any row to view the suggested fix and resolution actions.</div>"""
     else:
-        open_block = f'<p class="empty-msg">No open {empty_label} — great work!</p>'
+        open_block = f'<div class="empty-msg">No open {kind} — great work!</div>'
 
     closed_block = ""
     if closed_rows_html:
         n = len(closed_rows_html)
         closed_block = f"""
-<details class="closed-section">
-  <summary class="closed-summary">
-    <i class="fas fa-circle-check"></i>
-    <span>Closed / Resolved {empty_label.title()}</span>
-    <span class="closed-count">{n}</span>
-  </summary>
-  <div class="table-wrap closed-table-wrap">
+<details class="closed-section" id="closed-{kind}">
+  <summary class="closed-summary"><i class="fas fa-check-circle"></i> Resolved / Closed <span class="closed-count" id="closed-count-{kind}">{n}</span></summary>
+  <div class="closed-table-wrap">
     <table class="issue-table">
-      {thead}
-      <tbody>{"".join(closed_rows_html)}</tbody>
+      {thead_closed}
+      <tbody id="closed-body-{kind}">{"".join(closed_rows_html)}</tbody>
     </table>
-    <p class="table-note">
-      <i class="fas fa-circle-info"></i>
-      These issues were resolved in SonarCloud. Links open the issue record directly.
-    </p>
   </div>
 </details>"""
 
     return open_block + closed_block
 
 # Build HTML blocks
-bug_rows          = [issue_row(i, "BUG",           is_closed=False) for i in bug_issues]
-bug_rows_closed   = [issue_row(i, "BUG",           is_closed=True)  for i in bug_issues_closed]
-vuln_rows         = [issue_row(i, "VULNERABILITY",  is_closed=False) for i in vuln_issues]
-vuln_rows_closed  = [issue_row(i, "VULNERABILITY",  is_closed=True)  for i in vuln_issues_closed]
-hs_rows           = [hotspot_row(h)                                   for h in hotspot_list]
+bug_rows          = [issue_row(i, "BUG", "bugs", is_closed=False) for i in bug_issues]
+bug_rows_closed   = [issue_row(i, "BUG", "bugs", is_closed=True)  for i in bug_issues_closed]
+vuln_rows         = [issue_row(i, "VULNERABILITY", "vulns", is_closed=False) for i in vuln_issues]
+vuln_rows_closed  = [issue_row(i, "VULNERABILITY", "vulns", is_closed=True)  for i in vuln_issues_closed]
+hs_rows           = [hotspot_row(h, "hotspots") for h in hotspot_list]
 
 bugs_html     = issues_table(bug_rows,  bug_rows_closed,  "bugs")
-vulns_html    = issues_table(vuln_rows, vuln_rows_closed, "vulnerabilities")
+vulns_html    = issues_table(vuln_rows, vuln_rows_closed, "vulns")
 hotspots_html = issues_table(hs_rows,  [],               "hotspots")
 
 # Chart data
@@ -565,33 +469,28 @@ h_levels = json.dumps([e.get("level","") for e in history])
 lang_chart_data = json.dumps(language_data)
 
 # Misc
-type_pills = "".join(
-    f'<span class="type-pill">{t.upper()}</span>' for t in DETECTED_TYPES
-)
+type_pills = "".join(f'<span class="type-pill">{t.upper()}</span>' for t in DETECTED_TYPES)
 
 RISK_CSS_CLASS = {"LOW": "risk-low", "MEDIUM": "risk-med", "HIGH": "risk-high"}
 risk_cls = RISK_CSS_CLASS.get(level, "risk-low")
 
-# FIX: fas (solid) classes — fa-regular requires Font Awesome Pro
 decision_icon_cls = {
-    "HIGH":   "fas fa-circle-xmark",
-    "MEDIUM": "fas fa-triangle-exclamation",
-    "LOW":    "fas fa-circle-check",
-}.get(level, "fas fa-circle-check")
+    "HIGH":   "fa-solid fa-circle-xmark",
+    "MEDIUM": "fa-solid fa-triangle-exclamation",
+    "LOW":    "fa-solid fa-circle-check",
+}.get(level, "fa-solid fa-circle-check")
 
 if level == "HIGH":
-    summary_txt = (f"Build blocked: {vulns_count} vulnerabilities, {bugs_count} bugs, "
-                   f"and {hotspots_count} hotspots exceed acceptable thresholds. "
-                   "Immediate remediation required before deployment.")
+    summary_txt = (f"Risk exceeds acceptable thresholds. "
+                   f"Immediate remediation required for {vulns_count} vulnerabilities and {bugs_count} bugs before deployment.")
 elif level == "MEDIUM":
-    summary_txt = (f"Build approved with warnings: {vulns_count} vulnerabilities, "
-                   f"{bugs_count} bugs, {hotspots_count} hotspots detected. "
-                   "Manual security review recommended.")
+    summary_txt = (f"Risk is within tolerance but security findings require remediation before the next release. "
+                   f"Schedule fixes for the {vulns_count} vulnerabilities and review the {hotspots_count} hotspots.")
 else:
     summary_txt = (f"Build approved. Detected issues ({vulns_count} vulns, "
-                   f"{bugs_count} bugs, {hotspots_count} hotspots) are within thresholds.")
+                   f"{bugs_count} bugs) are minimal and well within safety thresholds.")
 
-now_str = datetime.now(IST).strftime("%d %b %Y – %H:%M:%S IST")
+now_str = datetime.now(IST).strftime("%b %d, %Y · %H:%M")
 
 # ─────────────────────────────────────────────────
 # HTML report
@@ -602,96 +501,78 @@ html = f"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Security Dashboard — {PROJECT_KEY}</title>
+<meta name="description" content="Risk score, vulnerabilities, hotspots and code-quality metrics for {PROJECT_KEY}.">
 
-<!--
-  THEME BOOTSTRAP — runs synchronously before any paint.
-  Applies data-theme before first CSS render — eliminates flash of wrong theme.
--->
 <script>
 (function () {{
   var saved = '';
   try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch (e) {{}}
-  if (!saved) saved = 'dark';
+  if (!saved) saved = 'light';
   var resolved = saved;
   if (saved === 'system') {{
-    try {{
-      resolved = window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark' : 'light';
-    }} catch (e) {{ resolved = 'dark'; }}
+    try {{ resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }}
+    catch (e) {{ resolved = 'light'; }}
   }}
   document.documentElement.setAttribute('data-theme', resolved);
   window.__dsoInitialTheme = resolved;
-  window.__dsoSavedPref    = saved;
+  window.__dsoSavedPref = saved;
 }})();
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-
-<!--
-  Font Awesome 6 Free — provides fas (solid) and fab (brands).
-  NOTE: fa-regular (outline) icons require Font Awesome Pro.
-  All icons in this report use "fas" prefix to work with the free CDN.
--->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"
-        id="chartjsScript"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" id="chartjsScript"></script>
 
 <style>
 /* ═══════════════════════════════════════════════
-   Design tokens — Obsidian Minimalist (dark default)
-   Core:    #000000 bg · #0B0B0B containers · #1F1F1F borders
-            #FFFFFF text · #888888 sub-text
-   Status:  #FF3B30 danger · #FFD60A warning · #32D74B success
+   Design tokens — Warm off-white + Indigo (default)
 ═══════════════════════════════════════════════ */
 :root {{
+  color-scheme: light;
+  --bg:         #F7F6F2;
+  --bg2:        #FFFFFF;
+  --bg3:        #EFEDE6;
+  --border:     #E2DFD5;
+  --border2:    #C9C5B6;
+  --text:       #1A1830;
+  --text2:      #4A4766;
+  --text3:      #6B6883;
+  --accent:     #4F46E5;
+  --accent-s:   rgba(79, 70, 229, 0.08);
+  --low-fg:     #15803D;  --low-bg:  rgba(21, 128, 61, 0.10);
+  --med-fg:     #B45309;  --med-bg:  rgba(180, 83, 9, 0.10);
+  --high-fg:    #B91C1C;  --high-bg: rgba(185, 28, 28, 0.10);
+  --info-fg:    #1D4ED8;  --info-bg: rgba(29, 78, 216, 0.10);
+  --fix-bg:     #FBFAF6;
+  --fix-border: #E2DFD5;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+  --r: 8px;
+  --shadow: 0 1px 2px rgba(26,24,48,0.04), 0 4px 16px rgba(26,24,48,0.04);
+}}
+
+html[data-theme="dark"] {{
   color-scheme: dark;
-  --bg:         #121212;
-  --bg2:        #1E1E1E;
-  --bg3:        #252525;
-  --border:     #2C2C2C;
-  --border2:    #3D3D3D;
-  --text:       #E0E0E0;
-  --text2:      #A0A0A0;
-  --text3:      #666666;
-  --accent:     #E0E0E0;
-  --accent-s:   rgba(224, 224, 224, 0.05);
-  --low-fg:     #81C784;  --low-bg:  rgba(129, 199, 132, 0.1);
-  --med-fg:     #FBC02D;  --med-bg:  rgba(251, 192, 45, 0.1);
-  --high-fg:    #CF6679;  --high-bg: rgba(207, 102, 121, 0.1);
-  --fix-bg:     #1E1E1E;
-  --fix-border: #2C2C2C;
-  --mono: 'IBM Plex Mono', monospace;
-  --sans: 'Inter', sans-serif;
-  --r: 5px;
+  --bg:         #131322;
+  --bg2:        #1B1B2E;
+  --bg3:        #232338;
+  --border:     #2D2D45;
+  --border2:    #3F3F5A;
+  --text:       #F1F1F7;
+  --text2:      #C8C8D6;
+  --text3:      #8B8BA3;
+  --accent:     #A5B4FC;
+  --accent-s:   rgba(165, 180, 252, 0.10);
+  --low-fg:     #4ADE80;  --low-bg:  rgba(74, 222, 128, 0.12);
+  --med-fg:     #FBBF24;  --med-bg:  rgba(251, 191, 36, 0.12);
+  --high-fg:    #F87171;  --high-bg: rgba(248, 113, 113, 0.12);
+  --info-fg:    #93C5FD;  --info-bg: rgba(147, 197, 253, 0.12);
+  --fix-bg:     #1F1F33;
+  --fix-border: #2D2D45;
   --shadow: 0 4px 12px rgba(0,0,0,0.5);
 }}
 
-/* Light theme — inverted Obsidian */
-html[data-theme="light"] {{
-  color-scheme: light;
-  --bg:         #F4F4F9;
-  --bg2:        #FFFFFF;
-  --bg3:        #EAE9F2;
-  --border:     #D6D4E5;
-  --border2:    #BEBBD2;
-  --text:       #1A1830;
-  --text2:      #4A4766;
-  --text3:      #797696;
-  --accent:     #5D4EE0;
-  --accent-s:   rgba(93, 78, 224, 0.08);
-  --low-fg:     #1A7B54;  --low-bg:  rgba(26, 123, 84, 0.1);
-  --med-fg:     #B36600;  --med-bg:  rgba(179, 102, 0, 0.1);
-  --high-fg:    #D12A45;  --high-bg: rgba(209, 42, 69, 0.1);
-  --fix-bg:     #FFFFFF;
-  --fix-border: #D6D4E5;
-  --shadow: 0 4px 16px rgba(26, 24, 48, 0.06);
-}}
-
-/* ═══════════════════════════════════════════════
-   Base
-═══════════════════════════════════════════════ */
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
 body {{
@@ -704,77 +585,67 @@ body {{
   transition: background .2s, color .2s;
 }}
 
-a {{ color: var(--text2); text-decoration: none; }}
-a:hover {{ color: var(--text); text-decoration: underline; }}
+a {{ color: var(--accent); text-decoration: none; }}
+a:hover {{ text-decoration: underline; }}
 
-/* ═══════════════════════════════════════════════
-   Top nav
-═══════════════════════════════════════════════ */
+:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
+
+.skip-link {{
+  position: absolute; left: -9999px; top: 8px;
+  background: var(--accent); color: #fff;
+  padding: 8px 14px; border-radius: 4px;
+  font-family: var(--mono); font-size: 12px; z-index: 999;
+}}
+.skip-link:focus {{ left: 8px; }}
+
+/* ───── Nav ───── */
 .nav {{
   position: sticky; top: 0; z-index: 200;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 28px; height: 52px;
+  padding: 0 24px; height: 56px;
 }}
 .nav-brand {{
   font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 11px; font-weight: 600;
   color: var(--text);
   display: flex; align-items: center; gap: 10px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
+  letter-spacing: .12em; text-transform: uppercase;
 }}
+.nav-brand i {{ color: var(--accent); font-size: 14px; }}
 .status-dot {{
-  width: 6px; height: 6px; border-radius: 50%;
+  width: 8px; height: 8px; border-radius: 50%;
   animation: pulse 2.4s ease-in-out infinite;
-  flex-shrink: 0;
+  flex-shrink: 0; margin-left: 4px;
 }}
 .status-dot.risk-low  {{ background: var(--low-fg); }}
 .status-dot.risk-med  {{ background: var(--med-fg); }}
 .status-dot.risk-high {{ background: var(--high-fg); }}
-@keyframes pulse {{
-  0%, 100% {{ opacity: 1; transform: scale(1); }}
-  50%       {{ opacity: .35; transform: scale(1.6); }}
-}}
+@keyframes pulse {{ 0%,100% {{opacity:1;transform:scale(1);}} 50% {{opacity:.4;transform:scale(1.4);}} }}
 .nav-right {{ display: flex; align-items: center; gap: 12px; }}
-.nav-ts {{ font-family: var(--mono); font-size: 10px; color: var(--text3); letter-spacing: .04em; }}
+.nav-ts {{ font-family: var(--mono); font-size: 11px; color: var(--text3); letter-spacing: .04em; }}
+@media (max-width: 640px) {{ .nav-ts {{ display: none; }} }}
 
-/* Theme toggle — Font Awesome solid icons (no emojis) */
 .theme-toggle {{
-  display: flex;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  overflow: hidden;
+  display: flex; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: 6px;
   padding: 2px; gap: 2px;
 }}
 .theme-btn {{
-  background: none; border: none;
-  padding: 0; cursor: pointer;
-  border-radius: 4px; font-size: 12px;
-  color: var(--text3);
-  transition: background .12s, color .12s;
+  background: none; border: none; cursor: pointer;
+  border-radius: 4px; color: var(--text3);
   display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 26px;
-  flex-shrink: 0;
+  width: 30px; height: 26px; flex-shrink: 0;
+  transition: background .12s, color .12s;
 }}
-.theme-btn i {{ pointer-events: none; font-size: 12px; }}
-.theme-btn.active {{
-  background: var(--text);
-  color: var(--bg);
-}}
-.theme-btn:not(.active):hover {{
-  color: var(--text2);
-  background: var(--border);
-}}
+.theme-btn:hover {{ color: var(--text2); background: var(--border); }}
+.theme-btn.active {{ background: var(--accent); color: #fff; }}
+.theme-btn i {{ font-size: 12px; }}
 
-/* ═══════════════════════════════════════════════
-   Hero
-═══════════════════════════════════════════════ */
+/* ───── Hero ───── */
 .hero {{
-  padding: 52px 28px 40px;
+  padding: 56px 24px 40px;
   text-align: center;
   border-bottom: 1px solid var(--border);
   background: var(--bg2);
@@ -782,743 +653,428 @@ a:hover {{ color: var(--text); text-decoration: underline; }}
 .hero-title {{
   font-family: var(--mono);
   font-size: clamp(15px, 2.5vw, 22px);
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  margin-bottom: 4px;
+  font-weight: 600; color: var(--text);
+  letter-spacing: .08em; text-transform: uppercase;
+  margin-bottom: 6px;
 }}
 .hero-sub {{
-  color: var(--text3);
-  font-size: 11px;
-  margin-bottom: 18px;
-  font-family: var(--mono);
+  color: var(--text3); font-size: 12px;
+  margin-bottom: 22px; font-family: var(--mono);
   letter-spacing: .04em;
 }}
 .type-pills {{ display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 32px; }}
 .type-pill {{
-  background: transparent;
-  color: var(--text3);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 2px 10px;
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .1em;
+  background: var(--bg3); color: var(--text2);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 3px 10px;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
 }}
 .score-ring {{
   display: inline-flex; flex-direction: column; align-items: center;
-  padding: 28px 56px;
-  border-radius: var(--r);
-  border-width: 1px; border-style: solid;
-  margin-bottom: 16px;
+  padding: 28px 60px; border-radius: 12px;
+  border: 1px solid; margin-bottom: 16px;
 }}
 .score-ring.risk-low  {{ background: var(--low-bg);  border-color: var(--low-fg);  }}
 .score-ring.risk-med  {{ background: var(--med-bg);  border-color: var(--med-fg);  }}
 .score-ring.risk-high {{ background: var(--high-bg); border-color: var(--high-fg); }}
-.score-num {{
-  font-family: var(--mono);
-  font-size: 64px;
-  font-weight: 600;
-  line-height: 1;
-}}
+.score-num {{ font-family: var(--mono); font-size: 64px; font-weight: 600; line-height: 1; }}
 .score-ring.risk-low  .score-num {{ color: var(--low-fg);  }}
 .score-ring.risk-med  .score-num {{ color: var(--med-fg);  }}
 .score-ring.risk-high .score-num {{ color: var(--high-fg); }}
-.score-lbl {{
-  font-size: 9px;
-  letter-spacing: .18em;
-  margin-top: 6px;
-  opacity: .65;
-  text-transform: uppercase;
-  font-family: var(--mono);
-}}
-.score-ring.risk-low  .score-lbl {{ color: var(--low-fg);  }}
-.score-ring.risk-med  .score-lbl {{ color: var(--med-fg);  }}
-.score-ring.risk-high .score-lbl {{ color: var(--high-fg); }}
+.score-lbl {{ font-size: 9px; letter-spacing: .18em; margin-top: 6px; text-transform: uppercase; font-family: var(--mono); color: var(--text3); }}
 .level-badge {{
-  display: inline-block;
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .16em;
-  padding: 4px 18px;
-  border-radius: 3px;
-  border-width: 1px; border-style: solid;
+  display: inline-block; font-family: var(--mono);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: .16em; padding: 5px 18px;
+  border-radius: 4px; border: 1px solid;
   text-transform: uppercase;
 }}
 .level-badge.risk-low  {{ color: var(--low-fg);  background: var(--low-bg);  border-color: var(--low-fg);  }}
 .level-badge.risk-med  {{ color: var(--med-fg);  background: var(--med-bg);  border-color: var(--med-fg);  }}
 .level-badge.risk-high {{ color: var(--high-fg); background: var(--high-bg); border-color: var(--high-fg); }}
 
-/* ═══════════════════════════════════════════════
-   Page layout
-═══════════════════════════════════════════════ */
+/* ───── Page ───── */
 .page {{ max-width: 1280px; margin: 0 auto; padding: 24px 20px 60px; }}
-
 .card {{
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 22px;
-  margin-bottom: 14px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 22px; margin-bottom: 14px;
   box-shadow: var(--shadow);
-  transition: background .2s, border-color .2s;
 }}
 .card-title {{
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  color: var(--text3);
-  margin-bottom: 18px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .16em; text-transform: uppercase;
+  color: var(--text2); margin-bottom: 18px;
   display: flex; align-items: center; gap: 10px;
 }}
 .card-title::before {{
-  content: '';
-  display: block;
-  width: 2px; height: 10px;
-  border-radius: 1px;
-  background: var(--text3);
-  flex-shrink: 0;
+  content: ''; display: block;
+  width: 3px; height: 12px; border-radius: 2px;
+  background: var(--accent); flex-shrink: 0;
 }}
 
-/* ═══════════════════════════════════════════════
-   Metric grid
-═══════════════════════════════════════════════ */
+/* ───── Metrics ───── */
 .metric-grid {{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px; margin-bottom: 14px;
 }}
 .metric-tile {{
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 18px 14px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 18px 14px;
   text-align: center;
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  cursor: default;
+  transition: transform .2s, border-color .2s, box-shadow .2s;
 }}
-.metric-tile:hover {{ 
-  border-color: var(--text); 
-  transform: translateY(-3px);
-  box-shadow: var(--shadow); 
-  }}
+.metric-tile:hover {{
+  border-color: var(--accent); transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}}
 .metric-tile .m-val {{
-  font-family: var(--mono);
-  font-size: 30px;
-  font-weight: 600;
-  line-height: 1;
-  margin-bottom: 5px;
+  font-family: var(--mono); font-size: 30px; font-weight: 600;
+  line-height: 1; margin-bottom: 6px;
 }}
-.m-bug   {{ color: #FF3B30; }}
-.m-vuln  {{ color: #FF3B30; }}
-.m-spot  {{ color: #FFD60A; }}
-.m-smell {{ color: #888888; }}
-.m-cov   {{ color: #32D74B; }}
+.m-bug   {{ color: var(--high-fg); }}
+.m-vuln  {{ color: var(--high-fg); }}
+.m-spot  {{ color: var(--med-fg); }}
+.m-smell {{ color: var(--info-fg); }}
+.m-cov   {{ color: var(--low-fg); }}
 .m-dup   {{ color: var(--text3); }}
 .metric-tile .m-lbl {{
-  font-size: 9px;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: .1em;
+  font-size: 9px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .1em;
   font-family: var(--mono);
 }}
 .rating-row {{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
 }}
 .rating-tile {{
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 14px;
-  text-align: center;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 14px; text-align: center;
 }}
-.rating-tile .r-val {{
-  font-family: var(--mono);
-  font-size: 26px;
-  font-weight: 600;
-}}
-.r-A {{ color: #32D74B; }}
-.r-B {{ color: #32D74B; }}
-.r-C {{ color: #FFD60A; }}
-.r-D {{ color: #FF3B30; }}
-.r-E {{ color: #FF3B30; }}
-.r-Q {{ color: var(--text3); }}
+.rating-tile .r-val {{ font-family: var(--mono); font-size: 26px; font-weight: 600; }}
+.r-A, .r-B {{ color: var(--low-fg); }}
+.r-C       {{ color: var(--med-fg); }}
+.r-D, .r-E {{ color: var(--high-fg); }}
 .rating-tile .r-lbl {{
-  font-size: 12px;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  margin-top: 3px;
-  font-family: var(--mono);
+  font-size: 11px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .1em;
+  margin-top: 4px; font-family: var(--mono);
 }}
 
-/* ═══════════════════════════════════════════════
-   Decision banner
-═══════════════════════════════════════════════ */
+/* ───── Decision ───── */
 .decision-banner {{
   display: flex; align-items: flex-start; gap: 16px;
-  padding: 16px 18px;
-  border-radius: var(--r);
-  border-width: 1px; border-style: solid;
-  margin-bottom: 12px;
+  padding: 16px 18px; border-radius: var(--r);
+  border: 1px solid; margin-bottom: 12px;
 }}
 .decision-banner.risk-low  {{ background: var(--low-bg);  border-color: var(--low-fg);  }}
 .decision-banner.risk-med  {{ background: var(--med-bg);  border-color: var(--med-fg);  }}
 .decision-banner.risk-high {{ background: var(--high-bg); border-color: var(--high-fg); }}
-.d-icon {{ font-size: 20px; flex-shrink: 0; line-height: 1.4; }}
+.d-icon {{ font-size: 22px; flex-shrink: 0; line-height: 1.4; }}
 .decision-banner.risk-low  .d-icon {{ color: var(--low-fg);  }}
 .decision-banner.risk-med  .d-icon {{ color: var(--med-fg);  }}
 .decision-banner.risk-high .d-icon {{ color: var(--high-fg); }}
 .d-body {{ flex: 1; }}
 .d-action {{
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .1em;
-  margin-bottom: 4px;
-  text-transform: uppercase;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .1em; margin-bottom: 4px; text-transform: uppercase;
 }}
 .decision-banner.risk-low  .d-action {{ color: var(--low-fg);  }}
 .decision-banner.risk-med  .d-action {{ color: var(--med-fg);  }}
 .decision-banner.risk-high .d-action {{ color: var(--high-fg); }}
-.d-summary {{ font-size: 13px; color: var(--text2); line-height: 1.55; }}
+.d-summary {{ font-size: 13px; color: var(--text); line-height: 1.6; }}
 .d-right {{ display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }}
 .trend-chip {{
-  font-family: var(--mono);
-  font-size: 10px;
-  padding: 3px 10px;
-  border-radius: 3px;
+  font-family: var(--mono); font-size: 10px;
+  padding: 4px 10px; border-radius: 4px;
   border: 1px solid var(--border);
-  color: var(--text3);
-  white-space: nowrap;
-  letter-spacing: .06em;
+  background: var(--bg2); color: var(--low-fg);
+  white-space: nowrap; letter-spacing: .04em;
 }}
 .formula-line {{
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text3);
-  margin-top: 12px;
-  padding: 10px 14px;
-  background: var(--bg3);
-  border-radius: var(--r);
-  border: 1px solid var(--border);
-  letter-spacing: .02em;
-  line-height: 1.7;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text3); margin-top: 12px;
+  padding: 12px 14px; background: var(--bg3);
+  border-radius: var(--r); border: 1px solid var(--border);
+  letter-spacing: .02em; line-height: 1.7;
 }}
 
-/* ═══════════════════════════════════════════════
-   Tabs
-═══════════════════════════════════════════════ */
+/* ───── Tabs ───── */
 .tab-bar {{
   display: flex; gap: 2px;
-  background: var(--bg3);
-  border-radius: var(--r); padding: 3px;
-  width: fit-content;
-  margin-bottom: 18px;
+  background: var(--bg3); border-radius: var(--r); padding: 3px;
+  width: fit-content; margin-bottom: 18px;
   border: 1px solid var(--border);
 }}
 .tab-btn {{
-  background: none; border: none;
-  color: var(--text3);
-  padding: 5px 14px;
-  border-radius: 3px;
-  cursor: pointer;
-  font-family: var(--mono);
-  font-size: 10px; font-weight: 600;
-  letter-spacing: .08em;
-  display: flex; align-items: center; gap: 7px;
-  transition: all .12s;
-  text-transform: uppercase;
+  background: none; border: none; color: var(--text3);
+  padding: 6px 14px; border-radius: 5px; cursor: pointer;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .08em; display: flex; align-items: center; gap: 7px;
+  transition: all .12s; text-transform: uppercase;
 }}
-.tab-btn.active {{
-  background: var(--text);
-  color: var(--bg);
-}}
-.tab-btn:not(.active):hover {{ color: var(--text2); background: var(--border); }}
+.tab-btn.active {{ background: var(--accent); color: #fff; }}
+.tab-btn:not(.active):hover {{ color: var(--text); background: var(--border); }}
 .tab-badge {{
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 17px; height: 16px; border-radius: 3px; padding: 0 4px;
+  min-width: 18px; height: 16px; border-radius: 3px; padding: 0 5px;
   font-size: 10px; font-weight: 700;
-  background: rgba(255,255,255,0.10);
-  color: inherit;
+  background: rgba(0,0,0,0.08); color: inherit;
 }}
-html[data-theme="light"] .tab-badge {{ background: rgba(0,0,0,0.08); }}
-.tab-btn.active .tab-badge {{ background: rgba(0,0,0,0.18); }}
-html[data-theme="light"] .tab-btn.active .tab-badge {{ background: rgba(255,255,255,0.3); }}
+html[data-theme="dark"] .tab-badge {{ background: rgba(255,255,255,0.10); }}
+.tab-btn.active .tab-badge {{ background: rgba(255,255,255,0.25); color: #fff; }}
 .tab-pane {{ display: none; }}
 .tab-pane.active {{ display: block; }}
 
-/* ═══════════════════════════════════════════════
-   Issue tables
-═══════════════════════════════════════════════ */
+/* ───── Issue tables ───── */
 .table-wrap {{ overflow-x: auto; }}
-.issue-table {{
-  width: 100%; border-collapse: collapse;
-  font-size: 13px;
-}}
+.issue-table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
 .issue-table thead th {{
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  color: var(--text3);
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  background: var(--bg3);
-  white-space: nowrap;
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .1em; color: var(--text3);
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  text-align: left; background: var(--bg3); white-space: nowrap;
 }}
-.issue-table tbody .issue-row {{
-  cursor: pointer;
-  transition: background .1s;
-}}
+.issue-table tbody .issue-row {{ cursor: pointer; transition: background .1s; }}
 .issue-table tbody .issue-row:hover {{ background: var(--accent-s); }}
 .issue-table tbody td {{
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-  vertical-align: middle;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  color: var(--text); vertical-align: middle;
 }}
 .td-file {{ min-width: 140px; white-space: nowrap; }}
-.td-path {{
-  min-width: 200px;
-  max-width: 260px;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text3) !important;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}}
-.td-msg {{ min-width: 180px; color: var(--text2) !important; }}
+.td-msg  {{ min-width: 180px; color: var(--text); }}
 .td-expand {{ width: 32px; text-align: center; }}
-
 .loc-link {{
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text) !important;
-  display: block;
-  white-space: nowrap;
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
+  color: var(--text); display: block; white-space: nowrap;
 }}
-.loc-link:hover {{ text-decoration: underline !important; }}
+.loc-link:hover {{ color: var(--accent); text-decoration: underline; }}
 .line-chip {{
   display: inline-flex; align-items: center; gap: 4px;
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--text3);
-  margin-top: 3px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 1px 5px;
-}}
-/* Resolution chip for closed issues */
-.res-chip {{
-  display: inline-block;
-  margin-left: 6px;
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .06em;
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  color: var(--text3); margin-top: 3px;
+  border: 1px solid var(--border); border-radius: 3px;
   padding: 1px 6px;
-  border-radius: 3px;
-  color: var(--res-fg);
-  background: color-mix(in srgb, var(--res-fg) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--res-fg) 20%, transparent);
-  vertical-align: middle;
-}}
-/* Closed issue rows */
-.closed-row td {{ opacity: 0.5; }}
-.closed-row:hover td {{ opacity: 0.8; }}
-/* Closed/Resolved section */
-.closed-section {{
-  margin-top: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  overflow: hidden;
-}}
-.closed-summary {{
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 16px;
-  cursor: pointer;
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .08em;
-  color: var(--text3);
-  background: var(--bg3);
-  user-select: none;
-  list-style: none;
-  text-transform: uppercase;
-}}
-.closed-summary::-webkit-details-marker {{ display: none; }}
-.closed-summary i {{ color: #32D74B; font-size: 11px; }}
-.closed-summary::after {{
-  content: '›';
-  margin-left: auto;
-  font-size: 16px;
-  color: var(--text3);
-  transition: transform .2s;
-}}
-details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
-.closed-count {{
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 18px; height: 18px;
-  border-radius: 3px; padding: 0 5px;
-  font-size: 10px; font-weight: 700;
-  background: rgba(50,215,75,0.10);
-  color: #32D74B;
-  border: 1px solid rgba(50,215,75,0.22);
-}}
-.closed-table-wrap {{
-  border-top: 1px solid var(--border);
 }}
 .rule-code {{
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text3);
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 1px 5px;
-  white-space: nowrap;
+  font-family: var(--mono); font-size: 10px;
+  color: var(--text3); background: var(--bg3);
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 2px 6px; white-space: nowrap;
 }}
-.status-chip {{
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text3);
-  letter-spacing: .04em;
-}}
+.status-chip {{ font-family: var(--mono); font-size: 11px; color: var(--text3); }}
 .chevron {{
-  font-size: 16px;
-  color: var(--text3);
-  display: inline-block;
-  transition: transform .2s;
-  line-height: 1;
+  font-size: 16px; color: var(--text3);
+  display: inline-block; transition: transform .2s; line-height: 1;
 }}
-.issue-row.expanded .chevron {{ transform: rotate(90deg); color: var(--text2); }}
+.issue-row.expanded .chevron {{ transform: rotate(90deg); color: var(--accent); }}
 .badge {{
-  display: inline-block;
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  padding: 2px 7px;
-  border-radius: 3px;
+  display: inline-block; font-family: var(--mono);
+  font-size: 9px; font-weight: 700; letter-spacing: .08em;
+  padding: 3px 8px; border-radius: 4px;
   color: var(--badge-fg);
-  background: color-mix(in srgb, var(--badge-fg) 9%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-fg) 20%, transparent);
+  background: color-mix(in srgb, var(--badge-fg) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-fg) 30%, transparent);
+  text-transform: uppercase;
+}}
+
+/* Resolved chip */
+.res-chip {{
+  display: inline-block; font-family: var(--mono);
+  font-size: 9px; font-weight: 700; letter-spacing: .06em;
+  padding: 2px 7px; border-radius: 3px;
+  color: var(--res-fg);
+  background: color-mix(in srgb, var(--res-fg) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--res-fg) 28%, transparent);
   text-transform: uppercase;
 }}
 
 /* Fix drawer */
 .fix-row {{ display: none; }}
 .fix-row.open {{ display: table-row !important; }}
-.fix-cell {{ padding: 0 !important; border-bottom: 1px solid var(--border) !important; }}
+.fix-cell {{ padding: 0 !important; }}
 .fix-inner {{
-  padding: 16px 18px;
-  background: var(--fix-bg);
-  border-left: 2px solid var(--border2);
-  border-top: 1px solid var(--fix-border);
+  padding: 16px 18px; background: var(--fix-bg);
+  border-left: 3px solid var(--accent); border-bottom: 1px solid var(--border);
 }}
 .fix-title {{
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 8px;
-  font-family: var(--mono);
+  font-size: 11px; font-weight: 600; color: var(--text);
+  margin-bottom: 8px; font-family: var(--mono);
   display: flex; align-items: center; gap: 8px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+  letter-spacing: .04em; text-transform: uppercase;
 }}
-.fix-title i {{ color: var(--text3); font-size: 11px; }}
-.fix-body {{
-  font-size: 13px;
-  color: var(--text2);
-  line-height: 1.7;
-  margin-bottom: 10px;
-}}
+.fix-title i {{ color: var(--accent); }}
+.fix-body {{ font-size: 13px; color: var(--text2); line-height: 1.7; margin-bottom: 10px; }}
 .fix-rule-link {{
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text3);
-  letter-spacing: .04em;
-  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px; color: var(--text3);
+  letter-spacing: .04em; display: inline-flex; align-items: center; gap: 6px;
 }}
-.fix-rule-link:hover {{ color: var(--text2); text-decoration: underline; }}
+.fix-rule-link:hover {{ color: var(--accent); text-decoration: underline; }}
+
 .table-note {{
-  font-size: 11px;
-  color: var(--text3);
-  margin-top: 10px;
-  font-style: italic;
-  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text3); margin-top: 10px;
+  font-style: italic; display: flex; align-items: center; gap: 6px;
 }}
 .empty-msg {{
-  font-size: 12px;
-  color: var(--text3);
-  padding: 20px 0;
-  font-style: italic;
-  font-family: var(--mono);
-  letter-spacing: .04em;
+  font-size: 12px; color: var(--text3); padding: 20px 0;
+  font-style: italic; font-family: var(--mono); letter-spacing: .04em;
+  text-align: center;
 }}
 
-/* ═══════════════════════════════════════════════
-   Links row
-═══════════════════════════════════════════════ */
+/* Resolved section */
+.closed-section {{
+  margin-top: 14px; border: 1px solid var(--border);
+  border-radius: var(--r); overflow: hidden;
+}}
+.closed-summary {{
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; cursor: pointer;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .08em; color: var(--text2);
+  background: var(--bg3); user-select: none;
+  list-style: none; text-transform: uppercase;
+}}
+.closed-summary::-webkit-details-marker {{ display: none; }}
+.closed-summary i {{ color: var(--low-fg); }}
+.closed-summary::after {{
+  content: '›'; margin-left: auto; font-size: 16px;
+  color: var(--text3); transition: transform .2s;
+}}
+details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
+.closed-count {{
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 18px; border-radius: 3px; padding: 0 6px;
+  font-size: 10px; font-weight: 700;
+  background: color-mix(in srgb, var(--low-fg) 14%, transparent);
+  color: var(--low-fg);
+  border: 1px solid color-mix(in srgb, var(--low-fg) 30%, transparent);
+}}
+.closed-row td {{ opacity: 0.7; }}
+
+/* Links */
 .links-row {{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
 }}
 .lnk {{
   display: flex; align-items: center; justify-content: center; gap: 9px;
-  padding: 12px 16px;
-  border-radius: var(--r);
-  font-family: var(--mono);
-  font-size: 12px; font-weight: 600;
+  padding: 14px 16px; border-radius: var(--r);
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
   letter-spacing: .08em;
-  border: 1px solid var(--border);
-  color: var(--text3);
-  background: var(--bg3);
-  transition: all .12s;
-  text-align: center;
-  text-transform: uppercase;
+  border: 1px solid var(--border); color: var(--text2);
+  background: var(--bg3); transition: all .12s;
+  text-align: center; text-transform: uppercase;
 }}
-.lnk i {{ font-size: 12px; flex-shrink: 0; }}
-.lnk:hover {{
-  background: var(--accent-s);
-  border-color: var(--border2);
-  color: var(--text);
-  text-decoration: none;
-}}
+.lnk i {{ font-size: 13px; color: var(--accent); }}
+.lnk:hover {{ background: var(--bg2); border-color: var(--accent); color: var(--text); text-decoration: none; }}
 
-/* ═══════════════════════════════════════════════
-   Chart
-═══════════════════════════════════════════════ */
-.chart-wrap {{ position: relative; height: 260px; }}
+/* Charts */
+.chart-wrap {{ position: relative; height: 280px; }}
 .chart-error {{
-  height: 260px;
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text3);
-  border: 1px dashed var(--border);
-  border-radius: var(--r);
-  letter-spacing: .04em;
+  height: 280px; display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 11px; color: var(--text3);
+  border: 1px dashed var(--border); border-radius: var(--r);
+  letter-spacing: .04em; text-align: center; padding: 0 24px;
 }}
-
-/* ═══════════════════════════════════════════════
-   Footer
-═══════════════════════════════════════════════ */
-.footer {{
-  text-align: center;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text3);
-  padding: 28px 0 0;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}}
-
-/* ═══════════════════════════════════════════════
-   Language chart
-═══════════════════════════════════════════════ */
 .lang-chart-container {{
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 28px;
-  align-items: center;
+  display: grid; grid-template-columns: 280px 1fr;
+  gap: 28px; align-items: center;
 }}
-@media (max-width: 768px) {{
-  .lang-chart-container {{ grid-template-columns: 1fr; }}
-}}
-.lang-chart-wrap {{
-  position: relative;
-  height: 280px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}}
-.lang-legend {{
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}}
+@media (max-width: 768px) {{ .lang-chart-container {{ grid-template-columns: 1fr; }} }}
+.lang-chart-wrap {{ position: relative; height: 280px; display: flex; align-items: center; justify-content: center; }}
+.lang-legend {{ display: flex; flex-direction: column; gap: 10px; }}
 .lang-legend-item {{
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: var(--r);
-  background: var(--bg3);
-  border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: var(--r);
+  background: var(--bg3); border: 1px solid var(--border);
 }}
-.lang-color {{
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  flex-shrink: 0;
-}}
-.lang-info {{
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}}
-.lang-name {{
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-  text-transform: uppercase;
-  letter-spacing: .06em;
-}}
-.lang-stats {{
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text3);
-}}
-.lang-pct {{
-  font-weight: 600;
-  color: var(--text2);
-}}
+.lang-color {{ width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }}
+.lang-info {{ flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }}
+.lang-name {{ font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); text-transform: uppercase; letter-spacing: .06em; }}
+.lang-stats {{ display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 11px; color: var(--text3); }}
+.lang-pct {{ font-weight: 600; color: var(--text2); }}
 
-/* ═══════════════════════════════════════════════
-   Resolve buttons
-═══════════════════════════════════════════════ */
+/* Resolve buttons */
 .resolve-actions {{
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  display: flex; gap: 8px; margin-top: 14px;
+  padding-top: 12px; border-top: 1px solid var(--border);
   flex-wrap: wrap;
 }}
 .resolve-btn {{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: var(--r);
-  border: 1px solid var(--border);
-  background: var(--bg3);
-  color: var(--text3);
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .04em;
-  cursor: pointer;
-  transition: all .12s;
-  text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--bg2);
+  color: var(--text2); font-family: var(--mono);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: .04em; cursor: pointer;
+  transition: all .12s; text-transform: uppercase;
 }}
-.resolve-btn:hover {{
-  background: var(--border);
-  color: var(--text2);
-  border-color: var(--border2);
-}}
-.resolve-btn i {{
-  font-size: 10px;
-}}
-.resolve-btn-primary {{
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
-}}
-.resolve-btn-primary:hover {{
-  opacity: 0.85;
-  color: var(--bg);
+.resolve-btn:hover {{ background: var(--accent-s); color: var(--text); border-color: var(--accent); }}
+.resolve-btn:disabled {{ opacity: 0.6; cursor: not-allowed; }}
+.resolve-btn-primary {{ background: var(--accent); color: #fff; border-color: var(--accent); }}
+.resolve-btn-primary:hover {{ background: var(--accent); color: #fff; opacity: 0.9; }}
+
+/* Footer */
+.footer {{
+  text-align: center; font-family: var(--mono); font-size: 10px;
+  color: var(--text3); padding: 28px 0;
+  letter-spacing: .08em; text-transform: uppercase;
 }}
 </style>
 </head>
 <body>
 
-<!-- ─── Nav ─────────────────────────────────── -->
-<nav class="nav">
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<nav class="nav" aria-label="Primary">
   <div class="nav-brand">
-    <div class="status-dot {risk_cls}"></div>
+    <i class="fas fa-shield-halved" aria-hidden="true"></i>
     DevSecOps · Security Dashboard
+    <span class="status-dot {risk_cls}" aria-label="Risk level {level}"></span>
   </div>
   <div class="nav-right">
     <span class="nav-ts">{now_str}</span>
-    <!--
-      Theme toggle: using Font Awesome solid icons (fas).
-      fa-sun = light, fa-moon = dark, fa-circle-half-stroke = system/auto
-    -->
-    <div class="theme-toggle" id="themeToggle">
-      <button class="theme-btn" data-t="light"  onclick="setTheme('light')"  title="Light mode">
-        <i class="fa-solid fa-sun"></i>
-      </button>
-      <button class="theme-btn" data-t="dark"   onclick="setTheme('dark')"   title="Dark mode">
-        <i class="fa-solid fa-moon"></i>
-      </button>
-      <button class="theme-btn" data-t="system" onclick="setTheme('system')" title="System default">
-        <i class="fa-solid fa-circle-half-stroke"></i>
-      </button>
+    <div class="theme-toggle" id="themeToggle" role="radiogroup" aria-label="Theme">
+      <button class="theme-btn" data-t="light"  onclick="setTheme('light')"  title="Light mode" role="radio" aria-checked="false" aria-label="Light mode"><i class="fa-solid fa-sun"></i></button>
+      <button class="theme-btn" data-t="dark"   onclick="setTheme('dark')"   title="Dark mode"  role="radio" aria-checked="false" aria-label="Dark mode"><i class="fa-solid fa-moon"></i></button>
+      <button class="theme-btn" data-t="system" onclick="setTheme('system')" title="System default" role="radio" aria-checked="false" aria-label="System theme"><i class="fa-solid fa-circle-half-stroke"></i></button>
     </div>
   </div>
 </nav>
 
-<!-- ─── Hero ─────────────────────────────────── -->
-<div class="hero">
-  <div class="hero-title">Security Risk Report</div>
+<header class="hero">
+  <h1 class="hero-title">Security Risk Report</h1>
   <div class="hero-sub">Project · {PROJECT_KEY}</div>
   <div class="type-pills">{type_pills}</div>
-  <div class="score-ring {risk_cls}">
+  <div class="score-ring {risk_cls}" role="img" aria-label="Risk score {risk_score}, {level} risk">
     <div class="score-num">{risk_score}</div>
     <div class="score-lbl">Risk Score</div>
   </div>
   <br>
   <span class="level-badge {risk_cls}">{level} Risk</span>
-</div>
+</header>
 
-<!-- ─── Page ─────────────────────────────────── -->
-<div class="page">
+<main class="page" id="main">
 
-  <!-- Quick Links -->
-  <div class="card">
-    <div class="card-title">Quick Links</div>
+  <section class="card" aria-labelledby="ql-title">
+    <h2 class="card-title" id="ql-title">Quick Links</h2>
     <div class="links-row">
-      <a class="lnk" href="{SONAR_DASHBOARD}" target="_blank">
-        <i class="fas fa-shield-halved"></i> SonarCloud
-      </a>
-      <a class="lnk" href="{PROJECT_REPO}" target="_blank">
-        <i class="fas fa-code-branch"></i> Repository
-      </a>
-      <a class="lnk" href="{RUNNING_APP}" target="_blank">
-        <i class="fas fa-circle-play"></i> Application
-      </a>
+      <a class="lnk" href="{SONAR_DASHBOARD}" target="_blank" rel="noreferrer"><i class="fas fa-shield-halved"></i> SonarCloud</a>
+      <a class="lnk" href="{PROJECT_REPO}" target="_blank" rel="noreferrer"><i class="fas fa-code-branch"></i> Repository</a>
+      <a class="lnk" href="{RUNNING_APP}" target="_blank" rel="noreferrer"><i class="fas fa-circle-play"></i> Application</a>
     </div>
-  </div>
+  </section>
 
-  <!-- Language Distribution -->
-  <div class="card">
-    <div class="card-title">Language Distribution</div>
+  <section class="card" aria-labelledby="lang-title">
+    <h2 class="card-title" id="lang-title">Language Distribution</h2>
     <div class="lang-chart-container">
-      <div class="lang-chart-wrap">
-        <canvas id="langChart"></canvas>
-      </div>
+      <div class="lang-chart-wrap"><canvas id="langChart" aria-label="Language distribution chart"></canvas></div>
       <div id="langLegend" class="lang-legend"></div>
     </div>
-  </div>
+  </section>
 
-  <!-- Metrics -->
-  <div class="card">
-    <div class="card-title">Metrics Overview</div>
+  <section class="card" aria-labelledby="m-title">
+    <h2 class="card-title" id="m-title">Metrics Overview</h2>
     <div class="metric-grid">
       <div class="metric-tile"><div class="m-val m-bug">{bugs_count}</div><div class="m-lbl">Bugs</div></div>
       <div class="metric-tile"><div class="m-val m-vuln">{vulns_count}</div><div class="m-lbl">Vulnerabilities</div></div>
@@ -1528,95 +1084,65 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
       <div class="metric-tile"><div class="m-val m-dup">{duplication_pct}%</div><div class="m-lbl">Duplication</div></div>
     </div>
     <div class="rating-row">
-      <div class="rating-tile">
-        <div class="r-val r-{reliability_rating}">{reliability_rating}</div>
-        <div class="r-lbl">Reliability</div>
-      </div>
-      <div class="rating-tile">
-        <div class="r-val r-{security_rating}">{security_rating}</div>
-        <div class="r-lbl">Security</div>
-      </div>
-      <div class="rating-tile">
-        <div class="r-val r-{maintainability_rating}">{maintainability_rating}</div>
-        <div class="r-lbl">Maintainability</div>
-      </div>
-      <div class="rating-tile">
-        <div class="r-val" style="color:var(--text);">{risk_score}</div>
-        <div class="r-lbl">Risk Score</div>
-      </div>
+      <div class="rating-tile"><div class="r-val r-{reliability_rating}">{reliability_rating}</div><div class="r-lbl">Reliability</div></div>
+      <div class="rating-tile"><div class="r-val r-{security_rating}">{security_rating}</div><div class="r-lbl">Security</div></div>
+      <div class="rating-tile"><div class="r-val r-{maintainability_rating}">{maintainability_rating}</div><div class="r-lbl">Maintainability</div></div>
+      <div class="rating-tile"><div class="r-val" style="color:var(--text);">{risk_score}</div><div class="r-lbl">Risk Score</div></div>
     </div>
-  </div>
+  </section>
 
-  <!-- Decision -->
-  <div class="card">
-    <div class="card-title">Governance Decision</div>
+  <section class="card" aria-labelledby="dec-title">
+    <h2 class="card-title" id="dec-title">Governance Decision</h2>
     <div class="decision-banner {risk_cls}">
-      <div class="d-icon"><i class="{decision_icon_cls}"></i></div>
+      <div class="d-icon" aria-hidden="true"><i class="{decision_icon_cls}"></i></div>
       <div class="d-body">
         <div class="d-action">{decision}</div>
         <div class="d-summary">{summary_txt}</div>
       </div>
-      <div class="d-right">
-        <span class="trend-chip">{trend}</span>
-      </div>
+      <div class="d-right"><span class="trend-chip">{trend}</span></div>
     </div>
     <div class="formula-line">
       Risk = (Bugs × {WEIGHT_BUGS}) + (Vulns × {WEIGHT_VULNS}) + (Hotspots × {WEIGHT_HOTSPOTS})
       &nbsp;=&nbsp; ({bugs_count}×{WEIGHT_BUGS}) + ({vulns_count}×{WEIGHT_VULNS}) + ({hotspots_count}×{WEIGHT_HOTSPOTS})
       &nbsp;=&nbsp; <strong style="color:var(--text);">{risk_score}</strong>
     </div>
-  </div>
+  </section>
 
-  <!-- Issues -->
-  <div class="card">
-    <div class="card-title">Issue Details</div>
-    <div class="tab-bar">
-      <button class="tab-btn active" onclick="switchTab('bugs',this)">
-        <span class="tab-badge">{bugs_count}</span> Bugs
-      </button>
-      <button class="tab-btn" onclick="switchTab('vulns',this)">
-        <span class="tab-badge">{vulns_count}</span> Vulnerabilities
-      </button>
-      <button class="tab-btn" onclick="switchTab('hotspots',this)">
-        <span class="tab-badge">{hotspots_count}</span> Hotspots
-      </button>
+  <section class="card" aria-labelledby="iss-title">
+    <h2 class="card-title" id="iss-title">Issue Details</h2>
+    <div class="tab-bar" role="tablist" aria-label="Issue category">
+      <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-bugs" id="t-bugs" onclick="switchTab('bugs',this)"><span class="tab-badge" id="badge-bugs">{bugs_count}</span> Bugs</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-vulns" id="t-vulns" onclick="switchTab('vulns',this)"><span class="tab-badge" id="badge-vulns">{vulns_count}</span> Vulnerabilities</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-hotspots" id="t-hotspots" onclick="switchTab('hotspots',this)"><span class="tab-badge" id="badge-hotspots">{hotspots_count}</span> Hotspots</button>
     </div>
-    <div id="tab-bugs"     class="tab-pane active">{bugs_html}</div>
-    <div id="tab-vulns"    class="tab-pane">{vulns_html}</div>
-    <div id="tab-hotspots" class="tab-pane">{hotspots_html}</div>
-  </div>
+    <div id="tab-bugs"     class="tab-pane active" role="tabpanel" aria-labelledby="t-bugs">{bugs_html}</div>
+    <div id="tab-vulns"    class="tab-pane"        role="tabpanel" aria-labelledby="t-vulns">{vulns_html}</div>
+    <div id="tab-hotspots" class="tab-pane"        role="tabpanel" aria-labelledby="t-hotspots">{hotspots_html}</div>
+  </section>
 
-  <!-- Trend -->
-  <div class="card">
-    <div class="card-title">Risk Score Trend</div>
-    <div class="chart-wrap">
-      <canvas id="riskChart"></canvas>
-    </div>
-  </div>
+  <section class="card" aria-labelledby="trend-title">
+    <h2 class="card-title" id="trend-title">Risk Score Trend</h2>
+    <div class="chart-wrap"><canvas id="riskChart" aria-label="Risk score trend chart"></canvas></div>
+  </section>
 
-</div>
+</main>
 
-<div class="footer">
-  Generated by Intelligent Risk-Adaptive DevSecOps &nbsp;·&nbsp; {now_str}
-</div>
+<div class="footer">Generated by Intelligent Risk-Adaptive DevSecOps · {now_str}</div>
 
 <script>
-/* ══════════════════════════════════════════════════════
-   Theme management
-══════════════════════════════════════════════════════ */
+/* Theme management */
 var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
-
-function resolveTheme(pref) {{
-  if (pref === 'system') return MEDIA.matches ? 'dark' : 'light';
-  return pref || 'dark';
+function resolveTheme(p) {{
+  if (p === 'system') return MEDIA.matches ? 'dark' : 'light';
+  return p || 'light';
 }}
-
 function syncToggleButtons(saved) {{
   document.querySelectorAll('.theme-btn').forEach(function(b) {{
-    b.classList.toggle('active', b.dataset.t === saved);
+    var active = b.dataset.t === saved;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-checked', active ? 'true' : 'false');
   }});
 }}
-
 function applyTheme(saved) {{
   var resolved = resolveTheme(saved);
   document.documentElement.setAttribute('data-theme', resolved);
@@ -1624,283 +1150,236 @@ function applyTheme(saved) {{
   rebuildChart(resolved);
   rebuildLangChart();
 }}
-
-function setTheme(pref) {{
-  try {{ localStorage.setItem('dso-theme', pref); }} catch(e) {{}}
-  applyTheme(pref);
+function setTheme(p) {{
+  try {{ localStorage.setItem('dso-theme', p); }} catch(e) {{}}
+  applyTheme(p);
 }}
-
 (function() {{
-  var saved = window.__dsoSavedPref || 'dark';
+  var saved = window.__dsoSavedPref || 'light';
   syncToggleButtons(saved);
 }})();
-
 MEDIA.addEventListener('change', function() {{
   var saved = '';
   try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch(e) {{}}
-  if ((saved || 'system') === 'system') applyTheme('system');
+  if ((saved || 'light') === 'system') applyTheme('system');
 }});
 
-/* ══════════════════════════════════════════════════════
-   Tabs
-══════════════════════════════════════════════════════ */
+/* Tabs */
 function switchTab(name, btn) {{
-  document.querySelectorAll('.tab-pane').forEach(function(p) {{
-    p.classList.remove('active');
-  }});
+  document.querySelectorAll('.tab-pane').forEach(function(p) {{ p.classList.remove('active'); }});
   document.querySelectorAll('.tab-btn').forEach(function(b) {{
     b.classList.remove('active');
+    b.setAttribute('aria-selected', 'false');
   }});
   document.getElementById('tab-' + name).classList.add('active');
   btn.classList.add('active');
+  btn.setAttribute('aria-selected', 'true');
 }}
 
-/* ══════════════════════════════════════════════════════
-   Fix row toggle
-══════════════════════════════════════════════════════ */
+/* Fix-row toggle */
 function toggleRow(uid) {{
   var row  = document.getElementById(uid);
   var trig = row.previousElementSibling;
   var open = row.classList.contains('open');
   row.classList.toggle('open', !open);
-  row.style.display = open ? 'none' : 'table-row';
   trig.classList.toggle('expanded', !open);
 }}
 
-/* ══════════════════════════════════════════════════════
-   Resolve issue in SonarCloud
-══════════════════════════════════════════════════════ */
-function resolveIssue(issueKey, transition, event) {{
+/* Resolve actions — moves the row to the Resolved section in-page */
+var RES_META = {{
+  'FIXED':          {{label: 'Fixed',          color: '#15803D'}},
+  'FALSE-POSITIVE': {{label: 'False Positive', color: '#6B6883'}},
+  'WONTFIX':        {{label: "Won't Fix",      color: '#B45309'}},
+  'CONFIRM':        {{label: 'Confirmed',      color: '#1D4ED8'}}
+}};
+
+function resolveIssue(issueKey, transition, kind, event) {{
   event.stopPropagation();
-  
-  var confirmMsg = 'Mark this issue as "' + transition + '" in SonarCloud?';
-  if (!confirm(confirmMsg)) return;
-  
+  var meta = RES_META[transition] || {{label: transition, color: '#6B6883'}};
+  if (!confirm('Mark issue ' + issueKey + ' as "' + meta.label + '"?')) return;
+
   var btn = event.target.closest('.resolve-btn');
   if (btn) {{
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-  }}
-  
-  // In static HTML, we can't make API calls directly
-  // This would need a backend endpoint
-  alert('This feature requires backend API integration.\\n\\n' +
-        'To resolve issue ' + issueKey + ':\\n' +
-        '1. Go to SonarCloud\\n' +
-        '2. Find the issue\\n' +
-        '3. Use the "Resolve" dropdown\\n' +
-        '4. Select: ' + transition);
-  
-  if (btn) {{
-    btn.disabled = false;
-    btn.innerHTML = btn.dataset.original || 'Resolve';
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing…';
+
+    setTimeout(function() {{
+      moveToResolved(issueKey, kind, meta);
+      btn.disabled = false;
+      btn.innerHTML = orig;
+    }}, 350);
   }}
 }}
 
-/* ══════════════════════════════════════════════════════
-   Language distribution chart
-══════════════════════════════════════════════════════ */
+function moveToResolved(issueKey, kind, meta) {{
+  var row = document.getElementById('row-' + issueKey);
+  var fixRow = document.getElementById('fix-' + issueKey);
+  if (!row) return;
+
+  // Build a minimal closed-row from the original row data
+  var sevCell = row.cells[0].innerHTML;
+  var msgCell = row.cells[1].textContent.trim();
+  var ruleCell = row.cells[3].innerHTML;
+
+  var closedBody = document.getElementById('closed-body-' + kind);
+  if(!closedBody) return;
+  var tr = document.createElement('tr');
+  tr.className = 'closed-row';
+  tr.innerHTML =
+    '<td>' + sevCell + '</td>' +
+    '<td>' + msgCell + '</td>' +
+    '<td><span class="res-chip" style="--res-fg:' + meta.color + ';">' + meta.label + '</span></td>' +
+    '<td>' + ruleCell + '</td>';
+  closedBody.appendChild(tr);
+
+  // Remove originals
+  row.remove();
+  if (fixRow) fixRow.remove();
+
+  // Update counters
+  var countEl = document.getElementById('closed-count-' + kind);
+  if (countEl) countEl.textContent = String(parseInt(countEl.textContent || '0', 10) + 1);
+
+  var badge = document.getElementById('badge-' + kind);
+  if (badge) badge.textContent = String(Math.max(0, parseInt(badge.textContent, 10) - 1));
+
+  // Open the resolved details so the user sees where it went
+  var det = document.getElementById('closed-' + kind);
+  if (det) det.open = true;
+}}
+
+/* Language doughnut */
 var LANG_DATA = {lang_chart_data};
 var langChartInstance = null;
 
-var LANG_COLORS = [
-  '#FF3B30', '#FFD60A', '#32D74B', '#5E5CE6',
-  '#FF9F0A', '#00C7BE', '#BF5AF2', '#FF375F',
-  '#30D158', '#64D2FF', '#FFD70A', '#5E5CE6'
-];
+function langPalette() {{
+  var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  return dark
+    ? ['#A5B4FC','#93C5FD','#4ADE80','#FBBF24','#F87171','#C4B5FD']
+    : ['#4F46E5','#1D4ED8','#15803D','#B45309','#B91C1C','#7C3AED'];
+}}
 
 function buildLangChart() {{
   if (!LANG_DATA || LANG_DATA.length === 0) return;
-  
   var canvas = document.getElementById('langChart');
-  if (!canvas) return;
-  if (typeof Chart === 'undefined') return;
-  
-  var total = LANG_DATA.reduce(function(sum, item) {{ return sum + item.lines; }}, 0);
-  
-  var labels = LANG_DATA.map(function(item) {{ return item.lang.toUpperCase(); }});
-  var data = LANG_DATA.map(function(item) {{ return item.lines; }});
-  var colors = LANG_DATA.map(function(item, idx) {{ return LANG_COLORS[idx % LANG_COLORS.length]; }});
-  
+  if (!canvas || typeof Chart === 'undefined') return;
+  var total = LANG_DATA.reduce(function(s,i) {{ return s + i.lines; }}, 0);
+  var COLORS = langPalette();
   if (langChartInstance) {{ langChartInstance.destroy(); langChartInstance = null; }}
-  
   langChartInstance = new Chart(canvas.getContext('2d'), {{
     type: 'doughnut',
     data: {{
-      labels: labels,
+      labels: LANG_DATA.map(function(i) {{ return i.lang.toUpperCase(); }}),
       datasets: [{{
-        data: data,
-        backgroundColor: colors,
+        data: LANG_DATA.map(function(i) {{ return i.lines; }}),
+        backgroundColor: LANG_DATA.map(function(_, idx) {{ return COLORS[idx % COLORS.length]; }}),
         borderWidth: 0
       }}]
     }},
     options: {{
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '65%',
+      responsive: true, maintainAspectRatio: false, cutout: '65%',
       plugins: {{
         legend: {{ display: false }},
         tooltip: {{
           callbacks: {{
-            label: function(context) {{
-              var pct = ((context.parsed / total) * 100).toFixed(1);
-              return context.label + ': ' + pct + '% (' + context.parsed.toLocaleString() + ' lines)';
+            label: function(ctx) {{
+              var pct = ((ctx.parsed/total)*100).toFixed(1);
+              return ctx.label + ': ' + pct + '% (' + ctx.parsed.toLocaleString() + ' lines)';
             }}
           }}
         }}
       }}
     }}
   }});
-  
-  // Build legend
   var legend = document.getElementById('langLegend');
   if (legend) {{
     legend.innerHTML = LANG_DATA.map(function(item, idx) {{
-      var pct = ((item.lines / total) * 100).toFixed(1);
-      var color = LANG_COLORS[idx % LANG_COLORS.length];
+      var pct = ((item.lines/total)*100).toFixed(1);
+      var color = COLORS[idx % COLORS.length];
       return '<div class="lang-legend-item">' +
         '<div class="lang-color" style="background:' + color + ';"></div>' +
         '<div class="lang-info">' +
         '<span class="lang-name">' + item.lang.toUpperCase() + '</span>' +
-        '<div class="lang-stats">' +
-        '<span class="lang-pct">' + pct + '%</span>' +
-        '<span>' + item.lines.toLocaleString() + ' lines</span>' +
-        '</div>' +
-        '</div>' +
-        '</div>';
+        '<div class="lang-stats"><span class="lang-pct">' + pct + '%</span>' +
+        '<span>' + item.lines.toLocaleString() + ' lines</span></div>' +
+        '</div></div>';
     }}).join('');
   }}
 }}
+function rebuildLangChart() {{ if (typeof Chart !== 'undefined') buildLangChart(); }}
 
-function rebuildLangChart() {{
-  if (typeof Chart !== 'undefined') {{
-    buildLangChart();
-  }}
-}}
-
-/* ══════════════════════════════════════════════════════
-   Risk trend chart
-══════════════════════════════════════════════════════ */
-var CHART_DATA = {{
-  labels: {h_labels},
-  scores: {h_scores},
-  levels: {h_levels}
-}};
-
+/* Risk trend */
+var CHART_DATA = {{ labels: {h_labels}, scores: {h_scores}, levels: {h_levels} }};
 var chartInstance = null;
-
-function levelColor(l, alpha) {{
-  var key = (l || '').toUpperCase().trim();
-  var map = {{
-    HIGH:   'rgba(255,59,48,'   + alpha + ')',
-    MEDIUM: 'rgba(255,214,10,' + alpha + ')',
-    LOW:    'rgba(50,215,75,'  + alpha + ')'
-  }};
-  return map[key] || ('rgba(136,136,136,' + alpha + ')');
+function levelColor(l, a) {{
+  var k = (l||'').toUpperCase().trim();
+  var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  var map = dark
+    ? {{ HIGH:'rgba(248,113,113,'+a+')', MEDIUM:'rgba(251,191,36,'+a+')', LOW:'rgba(74,222,128,'+a+')' }}
+    : {{ HIGH:'rgba(185,28,28,'+a+')',   MEDIUM:'rgba(180,83,9,'+a+')',   LOW:'rgba(21,128,61,'+a+')' }};
+  return map[k] || ('rgba(107,104,131,'+a+')');
 }}
-
 function buildChart(theme) {{
   var canvas = document.getElementById('riskChart');
-  if (!canvas) return;
-  if (typeof Chart === 'undefined') return;
-
-  var isDark  = theme !== 'light';
-  var gridCol = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)';
-  var tickCol = isDark ? '#4a4a4a' : '#AAAAAA';
-  var tipBg   = isDark ? '#0B0B0B' : '#FFFFFF';
-  var tipBor  = isDark ? '#1F1F1F' : '#DDDDDD';
-  var tipText = isDark ? '#FFFFFF' : '#000000';
-  var tipMuted= isDark ? '#888888' : '#555555';
-  var lineCol = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)';
-  var fillCol = isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)';
-
+  if (!canvas || typeof Chart === 'undefined') return;
+  var isDark = theme === 'dark';
+  var grid   = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  var tick   = isDark ? '#8B8BA3' : '#6B6883';
+  var tipBg  = isDark ? '#1B1B2E' : '#FFFFFF';
+  var tipBor = isDark ? '#2D2D45' : '#E2DFD5';
+  var tipTx  = isDark ? '#F1F1F7' : '#1A1830';
+  var tipMut = isDark ? '#C8C8D6' : '#4A4766';
+  var line   = isDark ? '#A5B4FC' : '#4F46E5';
+  var fill   = isDark ? 'rgba(165,180,252,0.10)' : 'rgba(79,70,229,0.10)';
   if (chartInstance) {{ chartInstance.destroy(); chartInstance = null; }}
-
   chartInstance = new Chart(canvas.getContext('2d'), {{
     type: 'line',
     data: {{
       labels: CHART_DATA.labels,
       datasets: [{{
-        label: 'Risk Score',
-        data: CHART_DATA.scores,
-        borderColor: lineCol,
-        backgroundColor: fillCol,
+        label: 'Risk Score', data: CHART_DATA.scores,
+        borderColor: line, backgroundColor: fill,
         pointBackgroundColor: CHART_DATA.levels.map(function(l) {{ return levelColor(l, 1); }}),
-        pointBorderColor:     CHART_DATA.levels.map(function(l) {{ return levelColor(l, 1); }}),
-        pointRadius: 5,
-        pointHoverRadius: 8,
-        tension: 0.38,
-        fill: true,
-        borderWidth: 1.5
+        pointBorderColor: '#fff', pointBorderWidth: 1.5,
+        pointRadius: 5, pointHoverRadius: 8,
+        tension: 0.38, fill: true, borderWidth: 2
       }}]
     }},
     options: {{
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       plugins: {{
         legend: {{ display: false }},
         tooltip: {{
-          backgroundColor: tipBg,
-          borderColor: tipBor,
-          borderWidth: 1,
-          titleColor: tipText,
-          bodyColor: tipMuted,
-          padding: 10,
-          callbacks: {{
-            afterBody: function(items) {{
-              var idx = items[0].dataIndex;
-              var raw = (CHART_DATA.levels[idx] || '').toUpperCase().trim();
-              return ['Risk Level: ' + (raw || 'UNKNOWN')];
-            }}
-          }}
+          backgroundColor: tipBg, borderColor: tipBor, borderWidth: 1,
+          titleColor: tipTx, bodyColor: tipMut, padding: 10,
+          callbacks: {{ afterBody: function(items) {{
+            var l = (CHART_DATA.levels[items[0].dataIndex]||'').toUpperCase().trim();
+            return ['Risk Level: ' + (l || 'UNKNOWN')];
+          }} }}
         }}
       }},
       scales: {{
-        x: {{
-          ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
-          grid:  {{ color: gridCol }},
-          border: {{ color: gridCol }}
-        }},
-        y: {{
-          beginAtZero: true,
-          ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
-          grid:  {{ color: gridCol }},
-          border: {{ color: gridCol }}
-        }}
+        x: {{ ticks: {{ color: tick, font: {{ family: "'IBM Plex Mono'", size: 10 }} }}, grid: {{ color: grid }}, border: {{ color: grid }} }},
+        y: {{ beginAtZero: true, ticks: {{ color: tick, font: {{ family: "'IBM Plex Mono'", size: 10 }} }}, grid: {{ color: grid }}, border: {{ color: grid }} }}
       }}
     }}
   }});
 }}
+function rebuildChart(theme) {{ if (typeof Chart !== 'undefined') buildChart(theme); }}
 
-function rebuildChart(theme) {{
-  if (typeof Chart !== 'undefined') {{
-    buildChart(theme);
-  }}
-}}
-
-(function initChartWhenReady() {{
-  var MAX_WAIT_MS = 10000;
-  var start = Date.now();
-  var theme = window.__dsoInitialTheme || 'dark';
-
+(function initWhenReady() {{
+  var MAX = 10000, start = Date.now();
+  var theme = window.__dsoInitialTheme || 'light';
   function attempt() {{
-    if (typeof Chart !== 'undefined') {{
-      buildChart(theme);
-      buildLangChart();
-      return;
-    }}
-    if (Date.now() - start > MAX_WAIT_MS) {{
-      var wrap = document.querySelector('.chart-wrap');
-      if (wrap) {{
-        wrap.innerHTML =
-          '<div class="chart-error">Chart.js failed to load — ' +
-          'check network or Content-Security-Policy settings.</div>';
-      }}
+    if (typeof Chart !== 'undefined') {{ buildChart(theme); buildLangChart(); return; }}
+    if (Date.now() - start > MAX) {{
+      var w = document.querySelector('.chart-wrap');
+      if (w) w.innerHTML = '<div class="chart-error">Chart.js failed to load — check your network or CSP settings.</div>';
       return;
     }}
     setTimeout(attempt, 150);
   }}
-
   attempt();
 }})();
 </script>
