@@ -1326,9 +1326,6 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
       <a class="lnk" href="{RUNNING_APP}" target="_blank">
         <i class="fas fa-circle-play"></i> Application
       </a>
-      <a class="lnk" href="{GITHUB_RUN_URL}" target="_blank">
-        <i class="fas fa-gear"></i> CI/CD Run
-      </a>
     </div>
   </div>
 
