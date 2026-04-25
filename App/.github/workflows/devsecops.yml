@@ -232,7 +232,7 @@ jobs:
 
       - name: Install Node deps
         if: matrix.project_type == 'node'
-        run: npm ci --prefer-offline
+        run: npm ci --prefer-offline --ignore-scripts
 
       # ── Go ────────────────────────────────────────────────────
       - name: Setup Go
