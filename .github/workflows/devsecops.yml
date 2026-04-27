@@ -74,6 +74,7 @@ jobs:
 
           # ── .NET ──────────────────────────────────────────────
           if find . -maxdepth 5 -name "*.csproj" \
+               -not -path "*/risk-engine/*" \
                -not -path "*/bin/*" -not -path "*/obj/*" \
                | grep -q .; then
             TYPES+=("dotnet")
@@ -81,7 +82,8 @@ jobs:
           fi
 
           # ── Java / Maven / Gradle ─────────────────────────────
-          if [ -f "pom.xml" ] || find . -maxdepth 3 -name "build.gradle" | grep -q .; then
+          if [ -f "pom.xml" ] || find . -maxdepth 3 -name "build.gradle" \
+            -not -path "*/risk-engine/*" | grep -q .; then
             TYPES+=("java")
             echo "Detected: Java"
           fi
@@ -89,7 +91,9 @@ jobs:
           # ── Python ────────────────────────────────────────────
           if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || \
              [ -f "setup.py" ]         || [ -f "Pipfile" ] || \
-             find . -maxdepth 5 -name "*.py" -not -path "./.git/*" | grep -q .; then
+             find . -maxdepth 5 -name "*.py" 
+             -not -path "./risk-engine/*" \
+             -not -path "./.git/*" | grep -q .; then
             TYPES+=("python")
             echo "Detected: Python"
           fi
@@ -103,6 +107,7 @@ jobs:
           # ── C / C++ ───────────────────────────────────────────
           if [ -f "CMakeLists.txt" ] || [ -f "Makefile" ] || \
              find . -maxdepth 5 \( -name "*.cpp" -o -name "*.c" \) \
+               -not -path "./risk-engine/*" \
                -not -path "./.git/*" | grep -q .; then
             TYPES+=("cpp")
             echo "Detected: C/C++"
@@ -110,6 +115,7 @@ jobs:
 
           # ── Go ────────────────────────────────────────────────
           if [ -f "go.mod" ] || find . -maxdepth 5 -name "*.go" \
+               -not -path "./risk-engine/*" \
                -not -path "./.git/*" | grep -q .; then
             TYPES+=("go")
             echo "Detected: Go"
@@ -117,6 +123,7 @@ jobs:
 
           # ── Ruby ──────────────────────────────────────────────
           if [ -f "Gemfile" ] || find . -maxdepth 5 -name "*.rb" \
+               -not -path "./risk-engine/*" \
                -not -path "./.git/*" | grep -q .; then
             TYPES+=("ruby")
             echo "Detected: Ruby"
@@ -124,6 +131,7 @@ jobs:
 
           # ── PHP ───────────────────────────────────────────────
           if [ -f "composer.json" ] || find . -maxdepth 5 -name "*.php" \
+               -not -path "./risk-engine/*" \
                -not -path "./.git/*" | grep -q .; then
             TYPES+=("php")
             echo "Detected: PHP"
@@ -347,7 +355,7 @@ jobs:
             -Dsonar.projectKey=${{ needs.detect.outputs.project_key }}
             -Dsonar.organization=${{ env.SONAR_ORG }}
             -Dsonar.sources=.
-            -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/.venv/**,**/target/**,**/build/**,**/dist/**,**/__pycache__/**,**/.git/**
+            -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/.venv/**,**/target/**,**/build/**,**/dist/**,**/__pycache__/**,**/.git/**,**/risk-engine/**
             -Dsonar.python.version=3.8,3.9,3.10,3.11,3.12
             -Dsonar.scm.provider=git
 
@@ -518,10 +526,17 @@ jobs:
             fi
         - name: Build Docker image
           if: steps.dockerfile_check.outputs.exists == 'true'
-          run: docker build -t devsecops-api:latest .
+          env:
+            PRIMARY_LANG: ${{ needs.detect.outputs.primary_type }}
+          run: |
+            echo "Building for language: ${PRIMARY_LANG}"
+            docker build \
+              --build-arg DETECTED_LANG=${PRIMARY_LANG} \
+              -t devsecops-api:latest .
         - name: Run container
           if: steps.dockerfile_check.outputs.exists == 'true'
           env:
+            PORT_MAP: ${{ needs.detect.outputs.primary_type == 'dotnet' && '8080:8080' || '5000:5000' }}
             SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
             PROJECT_KEY: ${{ needs.detect.outputs.project_key }}
             SONAR_URL: ${{ env.SONAR_URL }}
@@ -529,12 +544,20 @@ jobs:
             docker stop devsecops-api 2>/dev/null || true
             docker rm devsecops-api 2>/dev/null || true
             docker run -d \
-              -p 5000:8080 \
-              -e SONAR_TOKEN="${SONAR_TOKEN}" \
-              -e PROJECT_KEY="${PROJECT_KEY}" \
-              -e SONAR_URL="${SONAR_URL}" \
-              --name devsecops-api \
-              devsecops-api:latest
+              -p ${{ env.PORT_MAP }} \
+              --name devsecops-app \
+              devsecops-app:latest
+
+            sleep 5
+            if curl -sf http://localhost:8080 > /dev/null 2>&1; then
+              echo "✓ App running on port 8080"
+            elif curl -sf http://localhost:5000 > /dev/null 2>&1; then
+              echo "✓ App running on port 5000"
+            else
+              echo "✗ App not responding"
+              docker logs devsecops-app
+              exit 1
+            fi
 
             echo "Waiting for API server to start..."
             for i in {1..30}; do
@@ -545,7 +568,7 @@ jobs:
               echo "Attempt $i/30..."
               sleep 2
             done
-            
+
             echo "✗ Health check failed"
             docker logs devsecops-api
             exit 1
