@@ -51,7 +51,23 @@ jobs:
       deploy_enabled: ${{ steps.detect.outputs.deploy_enabled }}
       project_key:  ${{ steps.detect.outputs.project_key }}
       has_weather_app: ${{ steps.detect.outputs.has_weather_app }}
+      has_azure_creds: ${{ steps.check_creds.outputs.has_creds }}
 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # ADD THIS STEP:
+      - name: Check for Azure Credentials
+        id: check_creds
+        env:
+          CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        run: |
+          if [ -n "$CLIENT_ID" ]; then
+            echo "has_creds=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_creds=false" >> "$GITHUB_OUTPUT"
+          fi
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -445,7 +461,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       needs.risk.outputs.risk_level != 'HIGH' &&
-      secrets.AZURE_CLIENT_ID != ''
+      needs.detect.outputs.has_azure_creds == 'true'
     outputs:
       api_url: ${{ steps.deploy.outputs.url }}
     
