@@ -603,7 +603,7 @@ html = f"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Security Dashboard — {PROJECT_KEY}</title>
-
+<script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
 <!--
   THEME BOOTSTRAP — runs synchronously before any paint.
   Applies data-theme before first CSS render — eliminates flash of wrong theme.
@@ -1721,14 +1721,58 @@ function toggleRow(uid) {{
 /* ══════════════════════════════════════════════════════
    Resolve issue in SonarCloud
 ══════════════════════════════════════════════════════ */
-function resolveIssue(issueKey, transition, event) {{
+// Obtain Azure AD token before calling API
+async function getAccessToken() {{
+  const config = {{
+    auth: {{
+      clientId: 'AZURE_AD_CLIENT_ID',  // From environment
+      authority: 'https://login.microsoftonline.com/TENANT_ID',
+      redirectUri: window.location.origin
+    }}
+  }};
+  
+  const msalInstance = new msal.PublicClientApplication(config);
+  
+  const tokenRequest = {{
+    scopes: [`api://${{config.auth.clientId}}/.default`]
+  }};
+  
+  const response = await msalInstance.acquireTokenSilent(tokenRequest);
+  return response.accessToken;
+}}
+
+async function resolveIssue(issueKey, transition, event) {{
   event.stopPropagation();
   
-  var transitionLabels = {{
-    'wontfix': "Won't Fix",
-    'falsepositive': 'False Positive',
-    'resolve': 'Resolved'
-  }};
+  if (!confirm(`Mark this issue as "${{transition}}"?`)) return;
+  
+  try {{
+    const token = await getAccessToken();
+    
+    const response = await fetch(`${{API_ENDPOINT}}/api/resolve-issue`, {{
+      method: 'POST',
+      headers: {{
+        'Authorization': `Bearer ${{token}}`,
+        'Content-Type': 'application/json'
+      }},
+      body: JSON.stringify({{
+        issue_key: issueKey,
+        transition: transition,
+        comment: `Resolved via dashboard on ${{new Date().toISOString()}}`
+      }})
+    }});
+    
+    if (response.ok) {{
+      alert('✓ Issue resolved successfully!');
+      setTimeout(() => window.location.reload(), 2000);
+    }} else {{
+      const error = await response.json();
+      alert(`✗ Failed: ${{error.error}}`);
+    }}
+  }} catch (err) {{
+    alert(`✗ Authentication error: ${{err.message}}`);
+  }}
+}}
   
   var confirmMsg = 'Mark this issue as "' + transitionLabels[transition] + '" in SonarCloud?';
   if (!confirm(confirmMsg)) return;
@@ -1741,6 +1785,8 @@ function resolveIssue(issueKey, transition, event) {{
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
   }}
   
+  var apiUrl = API_ENDPOINT || 'http://localhost:5001';
+
   // Check if API endpoint is configured
   if (!API_ENDPOINT || API_ENDPOINT === '{{API_ENDPOINT}}' || API_ENDPOINT === 'http://localhost:5000') {{
     // Fallback to manual instructions

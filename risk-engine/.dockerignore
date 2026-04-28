@@ -1,0 +1,7 @@
+# Exclude everything except what we need
+*
+
+# Include only what we need
+!requirements-api.txt
+!api-server.py
+!risk-analyzer.py

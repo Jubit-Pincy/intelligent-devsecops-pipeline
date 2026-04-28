@@ -1,10 +1,10 @@
-name: Intelligent Risk-Adaptive DevSecOps Pipeline
+name: Intelligent Risk-Adaptive DevSecOps Pipeline with Azure Deployment
 
 on:
   push:
-    branches: [ Testing ]
+    branches: [ main, Testing ]
   pull_request:
-    branches: [ Testing ]
+    branches: [ main, Testing ]
   workflow_dispatch:
     inputs:
       weight_bugs:
@@ -20,16 +20,18 @@ on:
         required: false
         default: '2'
       manual_project_type:
-        description: 'Force project type (auto/dotnet/java/python/node/cpp). Default: auto'
+        description: 'Force project type (auto/dotnet/java/python/node/cpp)'
         required: false
         default: 'auto'
 
 env:
   SONAR_URL: https://sonarcloud.io
-  SONAR_ORG: jubit-pincy                     # ← change to your SonarCloud org slug
+  SONAR_ORG: jubit-pincy
   WEIGHT_BUGS:     ${{ github.event.inputs.weight_bugs     || '3' }}
   WEIGHT_VULNS:    ${{ github.event.inputs.weight_vulns    || '5' }}
   WEIGHT_HOTSPOTS: ${{ github.event.inputs.weight_hotspots || '2' }}
+  AZURE_RESOURCE_GROUP: rg-devsecops
+  ACR_NAME: ${{ secrets.ACR_NAME }}
 
 permissions:
   contents: read
@@ -37,24 +39,24 @@ permissions:
   id-token: write
 
 jobs:
-  # ─────────────────────────────────────────────────────────────
-  # JOB 1 - Detect all project types present in the repository
-  # ─────────────────────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 1: Detect Project Types (EXCLUDING risk-engine)
+  # ═══════════════════════════════════════════════════════════════
   detect:
-    name: Detect Project Types
+    name: 🔍 Detect Project Types
     runs-on: ubuntu-latest
     outputs:
       types_json:   ${{ steps.detect.outputs.types_json }}
       primary_type: ${{ steps.detect.outputs.primary_type }}
       deploy_enabled: ${{ steps.detect.outputs.deploy_enabled }}
       project_key:  ${{ steps.detect.outputs.project_key }}
+      has_weather_app: ${{ steps.detect.outputs.has_weather_app }}
 
     steps:
       - name: Checkout
-        # actions/checkout v4.2.2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Detect project composition
+      - name: 🔎 Detect project composition
         id: detect
         shell: bash
         run: |
@@ -66,89 +68,102 @@ jobs:
             echo "types_json=[\"${MANUAL}\"]"  >> "$GITHUB_OUTPUT"
             echo "primary_type=${MANUAL}"       >> "$GITHUB_OUTPUT"
             echo "deploy_enabled=true"          >> "$GITHUB_OUTPUT"
-            echo "Manual override → ${MANUAL}"
+            echo "has_weather_app=false"        >> "$GITHUB_OUTPUT"
+            echo "✓ Manual override → ${MANUAL}"
             exit 0
           fi
 
           TYPES=()
+          HAS_APP=false
+
+          # CRITICAL: Exclude risk-engine, .github, and analysis directories
+          EXCLUDE_PATHS=(
+            -not -path "./risk-engine/*"
+            -not -path "./.github/*"
+            -not -path "./reports/*"
+            -not -path "./.git/*"
+            -not -path "./node_modules/*"
+            -not -path "./venv/*"
+            -not -path "./.venv/*"
+            -not -path "./bin/*"
+            -not -path "./obj/*"
+          )
+
+          # ── Check for actual application code ─────────────────
+          if [ -d "src" ] || [ -d "app" ] || [ -f "app.py" ] || [ -f "index.js" ] || [ -f "Program.cs" ]; then
+            HAS_APP=true
+          fi
 
           # ── .NET ──────────────────────────────────────────────
-          if find . -maxdepth 5 -name "*.csproj" \
-               -not -path "*/risk-engine/*" \
-               -not -path "*/bin/*" -not -path "*/obj/*" \
-               | grep -q .; then
+          if find . -maxdepth 5 -name "*.csproj" "${EXCLUDE_PATHS[@]}" | grep -q .; then
             TYPES+=("dotnet")
-            echo "Detected: .NET"
+            echo "✓ Detected: .NET"
           fi
 
           # ── Java / Maven / Gradle ─────────────────────────────
-          if [ -f "pom.xml" ] || find . -maxdepth 3 -name "build.gradle" \
-            -not -path "*/risk-engine/*" | grep -q .; then
+          if [ -f "pom.xml" ] || find . -maxdepth 3 -name "build.gradle" "${EXCLUDE_PATHS[@]}" | grep -q .; then
             TYPES+=("java")
-            echo "Detected: Java"
+            echo "✓ Detected: Java"
           fi
 
           # ── Python ────────────────────────────────────────────
-          if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || \
-             [ -f "setup.py" ]         || [ -f "Pipfile" ] || \
-             find . -maxdepth 5 -name "*.py" 
-             -not -path "./risk-engine/*" \
-             -not -path "./.git/*" | grep -q .; then
-            TYPES+=("python")
-            echo "Detected: Python"
+          # Look for requirements.txt in root or src/, but NOT in risk-engine/
+          if [ -f "requirements.txt" ] || [ -f "src/requirements.txt" ] || \
+             [ -f "pyproject.toml" ] || [ -f "setup.py" ] || [ -f "Pipfile" ]; then
+            # Verify it's not ONLY risk-engine files
+            if find . -maxdepth 5 -name "*.py" "${EXCLUDE_PATHS[@]}" | grep -q .; then
+              TYPES+=("python")
+              echo "✓ Detected: Python"
+            fi
           fi
 
-          # ── Node / React / Vue / Next / Angular ───────────────
-          if [ -f "package.json" ]; then
+          # ── Node / JS / TS / React / Vue ──────────────────────
+          if [ -f "package.json" ] && [ ! -f "risk-engine/package.json" ]; then
             TYPES+=("node")
-            echo "Detected: Node.js (JS/TS/React/Vue/Angular/Next…)"
+            echo "✓ Detected: Node.js"
           fi
 
           # ── C / C++ ───────────────────────────────────────────
           if [ -f "CMakeLists.txt" ] || [ -f "Makefile" ] || \
-             find . -maxdepth 5 \( -name "*.cpp" -o -name "*.c" \) \
-               -not -path "./risk-engine/*" \
-               -not -path "./.git/*" | grep -q .; then
+             find . -maxdepth 5 \( -name "*.cpp" -o -name "*.c" \) "${EXCLUDE_PATHS[@]}" | grep -q .; then
             TYPES+=("cpp")
-            echo "Detected: C/C++"
+            echo "✓ Detected: C/C++"
           fi
 
           # ── Go ────────────────────────────────────────────────
-          if [ -f "go.mod" ] || find . -maxdepth 5 -name "*.go" \
-               -not -path "./risk-engine/*" \
-               -not -path "./.git/*" | grep -q .; then
+          if [ -f "go.mod" ] || find . -maxdepth 5 -name "*.go" "${EXCLUDE_PATHS[@]}" | grep -q .; then
             TYPES+=("go")
-            echo "Detected: Go"
+            echo "✓ Detected: Go"
           fi
 
           # ── Ruby ──────────────────────────────────────────────
-          if [ -f "Gemfile" ] || find . -maxdepth 5 -name "*.rb" \
-               -not -path "./risk-engine/*" \
-               -not -path "./.git/*" | grep -q .; then
+          if [ -f "Gemfile" ] || find . -maxdepth 5 -name "*.rb" "${EXCLUDE_PATHS[@]}" | grep -q .; then
             TYPES+=("ruby")
-            echo "Detected: Ruby"
+            echo "✓ Detected: Ruby"
           fi
 
           # ── PHP ───────────────────────────────────────────────
-          if [ -f "composer.json" ] || find . -maxdepth 5 -name "*.php" \
-               -not -path "./risk-engine/*" \
-               -not -path "./.git/*" | grep -q .; then
+          if [ -f "composer.json" ] || find . -maxdepth 5 -name "*.php" "${EXCLUDE_PATHS[@]}" | grep -q .; then
             TYPES+=("php")
-            echo "Detected: PHP"
+            echo "✓ Detected: PHP"
           fi
 
           # ── Rust ──────────────────────────────────────────────
           if [ -f "Cargo.toml" ]; then
             TYPES+=("rust")
-            echo "Detected: Rust"
+            echo "✓ Detected: Rust"
           fi
 
           if [ ${#TYPES[@]} -eq 0 ]; then
-            echo "::error::No recognisable project files found."
-            exit 1
+            echo "⚠️  No project files detected (only analysis tools present)"
+            echo "types_json=[\"unknown\"]"   >> "$GITHUB_OUTPUT"
+            echo "primary_type=unknown"       >> "$GITHUB_OUTPUT"
+            echo "deploy_enabled=false"       >> "$GITHUB_OUTPUT"
+            echo "has_weather_app=false"      >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          # Build JSON array for the matrix
+          # Build JSON array
           JSON="["
           for i in "${!TYPES[@]}"; do
             [ $i -gt 0 ] && JSON+=","
@@ -158,27 +173,30 @@ jobs:
 
           PRIMARY="${TYPES[0]}"
           DEPLOY="false"
-          if [ -f "Dockerfile" ]; then
+          if [ -f "Dockerfile" ] && [ "$HAS_APP" = "true" ]; then
             DEPLOY="true"
           fi
 
-          echo "types_json=${JSON}"      >> "$GITHUB_OUTPUT"
-          echo "primary_type=${PRIMARY}" >> "$GITHUB_OUTPUT"
-          echo "deploy_enabled=${DEPLOY}" >> "$GITHUB_OUTPUT"
+          echo "types_json=${JSON}"           >> "$GITHUB_OUTPUT"
+          echo "primary_type=${PRIMARY}"      >> "$GITHUB_OUTPUT"
+          echo "deploy_enabled=${DEPLOY}"     >> "$GITHUB_OUTPUT"
+          echo "has_weather_app=${HAS_APP}"   >> "$GITHUB_OUTPUT"
 
           echo ""
-          echo "──────────────────────────────────"
-          echo " Detected types : ${TYPES[*]}"
-          echo " Primary type   : ${PRIMARY}"
-          echo " Deploy enabled : ${DEPLOY}"
-          echo "──────────────────────────────────"
+          echo "════════════════════════════════════════"
+          echo " Detected types    : ${TYPES[*]}"
+          echo " Primary type      : ${PRIMARY}"
+          echo " Has application   : ${HAS_APP}"
+          echo " Deploy enabled    : ${DEPLOY}"
+          echo "════════════════════════════════════════"
 
-  # ─────────────────────────────────────────────────────────────
-  # JOB 2 - Build every detected language (matrix)
-  # ─────────────────────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 2: Build Application (Matrix)
+  # ═══════════════════════════════════════════════════════════════
   build:
-    name: Build (${{ matrix.project_type }})
+    name: 🔨 Build (${{ matrix.project_type }})
     needs: detect
+    if: needs.detect.outputs.primary_type != 'unknown'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -187,13 +205,11 @@ jobs:
 
     steps:
       - name: Checkout
-        # actions/checkout v4.2.2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       # ── .NET ──────────────────────────────────────────────────
       - name: Setup .NET
         if: matrix.project_type == 'dotnet'
-        # actions/setup-dotnet v4.3.1
         uses: actions/setup-dotnet@3e891b0cb619bf60e2c25674b222b8940e2c1c25
         with:
           dotnet-version: '8.0.x'
@@ -205,7 +221,6 @@ jobs:
       # ── Java ──────────────────────────────────────────────────
       - name: Setup Java
         if: matrix.project_type == 'java'
-        # actions/setup-java v4.7.1
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
         with:
           distribution: temurin
@@ -222,7 +237,6 @@ jobs:
       # ── Python ────────────────────────────────────────────────
       - name: Setup Python
         if: matrix.project_type == 'python'
-        # actions/setup-python v5.6.0
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
@@ -231,13 +245,16 @@ jobs:
         if: matrix.project_type == 'python'
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f Pipfile ];          then pip install pipenv && pipenv install; fi
+          # Install from project requirements, NOT risk-engine
+          if [ -f requirements.txt ]; then 
+            pip install -r requirements.txt
+          elif [ -f src/requirements.txt ]; then
+            pip install -r src/requirements.txt
+          fi
 
-      # ── Node / JS / TS / React / Vue / Next ───────────────────
+      # ── Node ──────────────────────────────────────────────────
       - name: Setup Node
         if: matrix.project_type == 'node'
-        # actions/setup-node v4.4.0
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20'
@@ -250,7 +267,6 @@ jobs:
       # ── Go ────────────────────────────────────────────────────
       - name: Setup Go
         if: matrix.project_type == 'go'
-        # actions/setup-go v5.5.0
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with:
           go-version: '1.22'
@@ -259,49 +275,11 @@ jobs:
         if: matrix.project_type == 'go'
         run: go build ./...
 
-      # ── Ruby ──────────────────────────────────────────────────
-      - name: Setup Ruby
-        if: matrix.project_type == 'ruby'
-        # ruby/setup-ruby v1.237.0
-        uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
-      # ── PHP ───────────────────────────────────────────────────
-      - name: Setup PHP
-        if: matrix.project_type == 'php'
-        # shivammathur/setup-php v2.34.1
-        uses: shivammathur/setup-php@cf4cade2721270509d5b1c766ab3549210a39a2a
-        with:
-          php-version: '8.3'
-
-      - name: Install PHP deps
-        if: matrix.project_type == 'php' && hashFiles('composer.json') != ''
-        run: composer install --no-interaction
-
-      # ── Rust ──────────────────────────────────────────────────
-      - name: Setup Rust
-        if: matrix.project_type == 'rust'
-        # dtolnay/rust-toolchain (stable, pinned to recent commit)
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
-        with:
-          toolchain: stable
-
-      - name: Build Rust
-        if: matrix.project_type == 'rust'
-        run: cargo build --release
-
-      # ── C/C++ ─────────────────────────────────────────────────
-      - name: Build C/C++ (CMake)
-        if: matrix.project_type == 'cpp' && hashFiles('CMakeLists.txt') != ''
-        run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build
-
-  # ─────────────────────────────────────────────────────────────
-  # JOB 3 - Single SonarCloud scan covering the entire repo
-  # ─────────────────────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 3: SonarCloud Analysis
+  # ═══════════════════════════════════════════════════════════════
   sonar:
-    name: SonarCloud Analysis
+    name: 🛡️ SonarCloud Analysis
     needs: [detect, build]
     runs-on: ubuntu-latest
     outputs:
@@ -309,43 +287,18 @@ jobs:
 
     steps:
       - name: Checkout
-        # actions/checkout v4.2.2  (full history for blame / new-code detection)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
 
-      - name: Setup Java (SonarScanner needs JRE)
-        # actions/setup-java v4.7.1
+      - name: Setup Java
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup .NET (if dotnet detected)
-        if: contains(needs.detect.outputs.types_json, 'dotnet')
-        # actions/setup-dotnet v4.3.1
-        uses: actions/setup-dotnet@3e891b0cb619bf60e2c25674b222b8940e2c1c25
-        with:
-          dotnet-version: '8.0.x'
-
-      # ── SonarCloud scan ───────────────────────────────────────
-      - name: SonarCloud scan (.NET path)
-        if: needs.detect.outputs.primary_type == 'dotnet'
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          dotnet tool install --global dotnet-sonarscanner
-          dotnet sonarscanner begin \
-            /k:"${{ needs.detect.outputs.project_key }}" \
-            /o:"${{ env.SONAR_ORG }}" \
-            /d:sonar.host.url="${{ env.SONAR_URL }}" \
-            /d:sonar.token="${{ env.SONAR_TOKEN }}"
-          dotnet build --configuration Release
-          dotnet sonarscanner end /d:sonar.token="${{ env.SONAR_TOKEN }}"
-
-      - name: SonarCloud scan (Universal CLI path)
+      - name: SonarCloud scan
         if: needs.detect.outputs.primary_type != 'dotnet'
-        # SonarSource/sonarcloud-github-action v3.1.0
         uses: SonarSource/sonarcloud-github-action@e44258b109568baa0df60ed515909fc6c72cba92
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -355,82 +308,64 @@ jobs:
             -Dsonar.projectKey=${{ needs.detect.outputs.project_key }}
             -Dsonar.organization=${{ env.SONAR_ORG }}
             -Dsonar.sources=.
-            -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/.venv/**,**/target/**,**/build/**,**/dist/**,**/__pycache__/**,**/.git/**,**/.github/**,**/risk-engine/**
-            -Dsonar.python.version=3.8,3.9,3.10,3.11,3.12
+            -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/.venv/**,**/target/**,**/build/**,**/dist/**,**/__pycache__/**,**/.git/**,**/.github/**,**/risk-engine/**,**/reports/**
+            -Dsonar.python.version=3.12
             -Dsonar.scm.provider=git
 
-      - name: Parse Sonar task ID
+      - name: Parse task ID
         id: parse_task
-        shell: bash
         run: |
-          REPORT=""
-          for f in ".scannerwork/report-task.txt" \
-                   ".sonarqube/out/.sonar/report-task.txt" \
-                   "target/sonar/report-task.txt"; do
-            if [ -f "$f" ]; then REPORT="$f"; break; fi
-          done
-
-          if [ -z "$REPORT" ]; then
-            echo "::warning::report-task.txt not found - polling will be skipped."
-            echo "task_id=" >> "$GITHUB_OUTPUT"
-          else
+          REPORT=".scannerwork/report-task.txt"
+          if [ -f "$REPORT" ]; then
             TASK_ID=$(awk -F= '/ceTaskId/{print $2}' "$REPORT")
             echo "task_id=${TASK_ID}" >> "$GITHUB_OUTPUT"
-            echo "Sonar task ID: ${TASK_ID}"
+          else
+            echo "task_id=" >> "$GITHUB_OUTPUT"
           fi
 
-  # ─────────────────────────────────────────────────────────────
-  # JOB 4 - Wait for SonarCloud background task to finish
-  # ─────────────────────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 4: Wait for SonarCloud
+  # ═══════════════════════════════════════════════════════════════
   wait-sonar:
-    name: Wait for Sonar Processing
+    name: ⏳ Wait for Sonar
     needs: sonar
     runs-on: ubuntu-latest
     if: needs.sonar.outputs.task_id != ''
 
     steps:
-      - name: Poll SonarCloud task status
+      - name: Poll task status
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          TASK_ID:     ${{ needs.sonar.outputs.task_id }}
+          TASK_ID: ${{ needs.sonar.outputs.task_id }}
         run: |
-          MAX=30; COUNT=0
-          while [ $COUNT -lt $MAX ]; do
+          for i in {1..30}; do
             STATUS=$(curl -s -u "${SONAR_TOKEN}:" \
-              "${{ env.SONAR_URL }}/api/ce/task?id=${TASK_ID}" \
-              | jq -r '.task.status')
-            echo "[$COUNT/$MAX] Sonar task status: $STATUS"
-
+              "${{ env.SONAR_URL }}/api/ce/task?id=${TASK_ID}" | jq -r '.task.status')
+            echo "[$i/30] Status: $STATUS"
             case "$STATUS" in
-              SUCCESS)  echo "Analysis complete."; exit 0 ;;
-              FAILED|CANCELED)
-                echo "::error::Sonar analysis ${STATUS}."
-                exit 1 ;;
+              SUCCESS) exit 0 ;;
+              FAILED|CANCELED) exit 1 ;;
             esac
-
-            COUNT=$((COUNT+1))
             sleep 10
           done
-          echo "::error::Timed out waiting for Sonar."
           exit 1
 
-  # ─────────────────────────────────────────────────────────────
-  # JOB 5 - Risk Engine + HTML Report
-  # ─────────────────────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 5: Risk Evaluation
+  # ═══════════════════════════════════════════════════════════════
   risk:
-    name: Risk Evaluation & Report
+    name: 📊 Risk Evaluation
     needs: [detect, wait-sonar]
     runs-on: ubuntu-latest
     outputs:
       risk_level: ${{ steps.risk.outputs.risk_level }}
+      risk_score: ${{ steps.risk.outputs.risk_score }}
 
     steps:
       - name: Checkout
-        # actions/checkout v4.2.2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Python
-        # actions/setup-python v5.6.0
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
@@ -449,136 +384,343 @@ jobs:
           WEIGHT_HOTSPOTS: ${{ env.WEIGHT_HOTSPOTS }}
           DETECTED_TYPES:  ${{ needs.detect.outputs.types_json }}
           GITHUB_RUN_URL:  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          API_ENDPOINT:    ${{ secrets.API_ENDPOINT || 'http://localhost:5000' }}
+          API_ENDPOINT:    ${{ secrets.API_ENDPOINT }}
         run: |
           mkdir -p reports
-          python3 risk-engine/risk-analyzer.py | tee /tmp/risk_output.txt
-          # Parse the risk level printed by the script (e.g. "Risk Score: 12  Level: HIGH")
+          python3 risk-analyzer.py | tee /tmp/risk_output.txt
           LEVEL=$(grep -oP '(?<=Level: )\w+' /tmp/risk_output.txt | tail -1)
+          SCORE=$(grep -oP '(?<=Risk Score: )\d+' /tmp/risk_output.txt | tail -1)
           echo "risk_level=${LEVEL}" >> "$GITHUB_OUTPUT"
+          echo "risk_score=${SCORE}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload HTML report
-        # actions/upload-artifact v4.6.2
+      - name: Upload report
         uses: actions/upload-artifact@v4
         with:
           name: security-dashboard
           path: reports/security-report.html
           retention-days: 30
 
-      - name: Fail if HIGH risk
+      - name: ❌ Block if HIGH risk
         if: steps.risk.outputs.risk_level == 'HIGH'
         run: |
-          echo "::error::Pipeline blocked - HIGH risk detected."
+          echo "::error::🚨 Pipeline blocked - HIGH risk detected (score: ${{ steps.risk.outputs.risk_score }})"
           exit 1
 
-  # ─────────────────────────────────────────────────────────────
-  # JOB 5.5 - Deploy API Server (if enabled)
-  # ─────────────────────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 6: Publish Security Report to GitHub Pages
+  # ═══════════════════════════════════════════════════════════════
   publish-report:
-      name: Publish Report to GitHub Pages
-      needs: [detect, risk]
-      runs-on: ubuntu-latest
-      if: needs.risk.outputs.risk_level != 'HIGH'
+    name: 📄 Publish Report
+    needs: [detect, risk]
+    runs-on: ubuntu-latest
+    if: needs.risk.outputs.risk_level != 'HIGH'
 
-      steps:
-        - name: Download HTML report
-          uses: actions/download-artifact@v4
-          with:
-            name: security-dashboard
-            path: ./public
+    steps:
+      - name: Download report
+        uses: actions/download-artifact@v4
+        with:
+          name: security-dashboard
+          path: ./public
 
-        - name: Upload to GitHub Pages
-          uses: actions/upload-pages-artifact@v4
-          with:
-            path: ./public
+      - name: Upload to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
 
-        - name: Deploy to Pages
-          id: deployment
-          uses: actions/deploy-pages@v4
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
-        - name: Report URL
-          run: |
-            echo "📊 View security report at:"
-            echo "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/security-report.html"
+      - name: 📊 Report URL
+        run: |
+          echo "Security report available at:"
+          echo "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/security-report.html"
 
-    # ─────────────────────────────────────────────────────────────
-    # JOB 6 - Conditional Docker deployment
-    # ─────────────────────────────────────────────────────────────
-  deploy:
-      name: Deploy Application
-      needs: [detect, risk]
-      runs-on: ubuntu-latest
-      if: |
-        needs.risk.outputs.risk_level != 'HIGH' &&
-        needs.detect.outputs.deploy_enabled == 'true' 
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 7: Deploy DevSecOps API to Azure Container Apps
+  # ═══════════════════════════════════════════════════════════════
+  deploy-api:
+    name: 🚀 Deploy API to Azure
+    needs: [detect, risk]
+    runs-on: ubuntu-latest
+    if: |
+      needs.risk.outputs.risk_level != 'HIGH' &&
+      secrets.AZURE_CLIENT_ID != ''
+    outputs:
+      api_url: ${{ steps.deploy.outputs.url }}
+    
+    # GitHub OIDC federation - zero long-lived credentials
+    permissions:
+      id-token: write
+      contents: read
 
-      steps:
-        - name: Checkout
-          uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        - name: Check Dockerfile exists
-          id: dockerfile_check
-          run: |
-            if [ -f "Dockerfile" ]; then
-              echo "exists=true" >> $GITHUB_OUTPUT
-            else
-              echo "exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No Dockerfile found - skipping deployment"
-            fi
-        - name: Build Docker image
-          if: steps.dockerfile_check.outputs.exists == 'true'
-          env:
-            PRIMARY_LANG: ${{ needs.detect.outputs.primary_type }}
-          run: |
-            echo "Building for language: ${PRIMARY_LANG}"
-            docker build \
-              --build-arg DETECTED_LANG=${PRIMARY_LANG} \
-              -t devsecops-api:latest .
-        - name: Run container
-          env:
-            PRIMARY_TYPE: ${{ needs.detect.outputs.primary_type }}
-          run: |
-            # Determine port based on language
-            if [ "$PRIMARY_TYPE" = "dotnet" ]; then
-              PORT="8080"
-            elif [ "$PRIMARY_TYPE" = "java" ]; then
-              PORT="8080"
-            else
-              PORT="5000"
-            fi
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-            echo "🚀 Starting container on port $PORT"
+      - name: Azure Login via OIDC
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-            docker stop devsecops-app 2>/dev/null || true
-            docker rm devsecops-app 2>/dev/null || true
+      - name: Login to ACR
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
 
-            docker run -d \
-              -p $PORT:$PORT \
-              --name devsecops-app \
-              devsecops-app:latest
+      - name: Build & Push API Docker image
+        env:
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build API image from risk-engine files
+          docker build \
+            -f Dockerfile \
+            -t ${ACR_LOGIN_SERVER}/devsecops-api:${IMAGE_TAG} \
+            -t ${ACR_LOGIN_SERVER}/devsecops-api:latest \
+            .
+          
+          docker push ${ACR_LOGIN_SERVER}/devsecops-api:${IMAGE_TAG}
+          docker push ${ACR_LOGIN_SERVER}/devsecops-api:latest
 
-            echo "⏳ Waiting for app to start..."
-            sleep 8
+      - name: Configure Managed Identity for Key Vault access
+        run: |
+          # Get or create managed identity
+          IDENTITY_NAME="id-devsecops-api"
+          IDENTITY_ID=$(az identity show \
+            --name $IDENTITY_NAME \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query principalId -o tsv 2>/dev/null || true)
+          
+          if [ -z "$IDENTITY_ID" ]; then
+            echo "Creating managed identity..."
+            az identity create \
+              --name $IDENTITY_NAME \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }}
+            
+            IDENTITY_ID=$(az identity show \
+              --name $IDENTITY_NAME \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --query principalId -o tsv)
+            
+            # Wait for identity propagation
+            sleep 30
+          fi
+          
+          echo "identity_id=${IDENTITY_ID}" >> $GITHUB_ENV
+          
+          # Grant Key Vault access
+          az keyvault set-policy \
+            --name ${{ secrets.AZURE_KEYVAULT_NAME }} \
+            --object-id $IDENTITY_ID \
+            --secret-permissions get list
 
-            # Health check with retries
-            MAX_ATTEMPTS=10
-            ATTEMPT=1
+      - name: Store SonarCloud token in Key Vault
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          # Store token securely in Key Vault
+          az keyvault secret set \
+            --vault-name ${{ secrets.AZURE_KEYVAULT_NAME }} \
+            --name sonar-token \
+            --value "$SONAR_TOKEN" \
+            --content-type "text/plain"
+          
+          echo "✓ SONAR_TOKEN stored in Key Vault"
 
-            while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-              echo "Attempt $ATTEMPT/$MAX_ATTEMPTS - checking port $PORT..."
+      - name: Deploy to Container Apps with security hardening
+        id: deploy
+        env:
+          API_NAME: ${{ secrets.AZURE_API_NAME }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          IMAGE_TAG: ${{ github.sha }}
+          VAULT_URL: https://${{ secrets.AZURE_KEYVAULT_NAME }}.vault.azure.net/
+        run: |
+          # Get managed identity resource ID
+          IDENTITY_RESOURCE_ID=$(az identity show \
+            --name id-devsecops-api \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query id -o tsv)
+          
+          # Update or create container app with managed identity
+          if az containerapp show --name $API_NAME --resource-group ${{ env.AZURE_RESOURCE_GROUP }} &>/dev/null; then
+            echo "Updating existing container app..."
+            az containerapp update \
+              --name $API_NAME \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --image ${ACR_LOGIN_SERVER}/devsecops-api:${IMAGE_TAG} \
+              --set-env-vars \
+                VAULT_URL=${VAULT_URL} \
+                SONAR_URL=${{ env.SONAR_URL }} \
+                PROJECT_KEY=${{ needs.detect.outputs.project_key }} \
+                AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
+                AZURE_AD_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}
+          else
+            echo "Creating new container app with security controls..."
+            az containerapp create \
+              --name $API_NAME \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --environment devsecops-env \
+              --image ${ACR_LOGIN_SERVER}/devsecops-api:${IMAGE_TAG} \
+              --target-port 5000 \
+              --ingress external \
+              --registry-server ${ACR_LOGIN_SERVER} \
+              --user-assigned $IDENTITY_RESOURCE_ID \
+              --env-vars \
+                VAULT_URL=${VAULT_URL} \
+                SONAR_URL=${{ env.SONAR_URL }} \
+                PROJECT_KEY=${{ needs.detect.outputs.project_key }} \
+                AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
+                AZURE_AD_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
+              --cpu 0.5 --memory 1.0Gi \
+              --min-replicas 1 --max-replicas 3
+          fi
 
-              if curl -sf http://localhost:$PORT > /dev/null 2>&1; then
-                echo "✅ App healthy on port $PORT"
-                exit 0
-              fi
+          # Get URL
+          URL=$(az containerapp show \
+            --name $API_NAME \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          
+          echo "url=https://$URL" >> "$GITHUB_OUTPUT"
+          echo "✅ API deployed to: https://$URL"
 
-              ATTEMPT=$((ATTEMPT + 1))
-              sleep 3
-            done
+      - name: Configure IP restrictions (post-deployment)
+        env:
+          API_NAME: ${{ secrets.AZURE_API_NAME }}
+        run: |
+          # Only apply IP restrictions if explicitly configured
+          CUSTOM_IPS="${{ secrets.ALLOWED_IP_RANGES || '' }}"
+          
+          if [ -z "$CUSTOM_IPS" ]; then
+            echo "⚠️  ALLOWED_IP_RANGES not set - API is publicly accessible"
+            echo "   To restrict access, add ALLOWED_IP_RANGES secret with comma-separated IPs/CIDRs"
+            echo "   Example: 203.0.113.0/24,198.51.100.5/32"
+            echo "✅ Managed Identity: enabled"
+            echo "✅ Key Vault integration: enabled"
+            exit 0
+          fi
+          
+          echo "Configuring IP restrictions..."
+          
+          # GitHub Actions IP ranges (updated as of 2024)
+          GITHUB_ACTIONS_IPS="20.28.0.0/16,20.150.0.0/16,20.205.0.0/16,20.232.0.0/16"
+          ALLOWED_IPS="${GITHUB_ACTIONS_IPS},${CUSTOM_IPS}"
+          
+          az containerapp ingress access-restriction set \
+            --name $API_NAME \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --rule-name "github-actions-and-approved" \
+            --ip-address "$ALLOWED_IPS" \
+            --action Allow \
+            --description "GitHub Actions runners + approved client IPs"
+          
+          echo "✅ Managed Identity: enabled"
+          echo "✅ Key Vault integration: enabled"
+          echo "✅ IP restrictions: applied to ${CUSTOM_IPS}"
 
-            echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
-            echo "📋 Container logs:"
-            docker logs devsecops-app
-            echo ""
-            echo "📊 Container status:"
-            docker ps -a | grep devsecops-app
-            exit 1
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 8: Deploy Weather Application to Azure App Service
+  # ═══════════════════════════════════════════════════════════════
+  deploy-app:
+    name: 🌤️ Deploy Weather App
+    needs: [detect, risk, deploy-api]
+    runs-on: ubuntu-latest
+    if: |
+      needs.risk.outputs.risk_level != 'HIGH' &&
+      needs.detect.outputs.has_weather_app == 'true' &&
+      needs.detect.outputs.deploy_enabled == 'true'
+    
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Azure Login via OIDC
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Python App
+        if: needs.detect.outputs.primary_type == 'python'
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          package: .
+
+      - name: Deploy Node.js App
+        if: needs.detect.outputs.primary_type == 'node'
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          package: .
+
+      - name: Deploy .NET App
+        if: needs.detect.outputs.primary_type == 'dotnet'
+        run: |
+          dotnet publish -c Release -o ./publish
+          cd publish
+          zip -r ../app.zip .
+          az webapp deployment source config-zip \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+            --src ../app.zip
+
+      - name: Configure App Settings with JWT authentication
+        run: |
+          az webapp config appsettings set \
+            --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --settings \
+              API_ENDPOINT=${{ needs.deploy-api.outputs.api_url }} \
+              SONAR_URL=${{ env.SONAR_URL }} \
+              PROJECT_KEY=${{ needs.detect.outputs.project_key }} \
+              AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
+              AZURE_AD_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }}
+
+      - name: Get App URL
+        run: |
+          URL=$(az webapp show \
+            --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query defaultHostName -o tsv)
+          echo "✅ Weather app deployed to: https://$URL"
+          echo "⚠️  Frontend must obtain JWT from Azure AD before calling API"
+
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 9: Deployment Summary
+  # ═══════════════════════════════════════════════════════════════
+  summary:
+    name: 📋 Deployment Summary
+    needs: [detect, risk, deploy-api, deploy-app, publish-report]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Create Summary
+        run: |
+          echo "## 🎯 DevSecOps Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "- **Risk Level:** ${{ needs.risk.outputs.risk_level }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Risk Score:** ${{ needs.risk.outputs.risk_score }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Project Type:** ${{ needs.detect.outputs.primary_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "- **API:** ${{ needs.deploy-api.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Weather App:** ${{ needs.deploy-app.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Report:** ${{ needs.publish-report.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.deploy-api.outputs.api_url }}" != "" ]; then
+            echo "### 🔗 Deployed URLs" >> $GITHUB_STEP_SUMMARY
+            echo "- **API:** ${{ needs.deploy-api.outputs.api_url }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "- **Security Dashboard:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/security-report.html" >> $GITHUB_STEP_SUMMARY
