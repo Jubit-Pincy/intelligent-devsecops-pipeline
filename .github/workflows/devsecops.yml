@@ -355,7 +355,7 @@ jobs:
             -Dsonar.projectKey=${{ needs.detect.outputs.project_key }}
             -Dsonar.organization=${{ env.SONAR_ORG }}
             -Dsonar.sources=.
-            -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/.venv/**,**/target/**,**/build/**,**/dist/**,**/__pycache__/**,**/.git/**,**/risk-engine/**
+            -Dsonar.exclusions=**/node_modules/**,**/venv/**,**/.venv/**,**/target/**,**/build/**,**/dist/**,**/__pycache__/**,**/.git/**,**/.github/**,**/risk-engine/**
             -Dsonar.python.version=3.8,3.9,3.10,3.11,3.12
             -Dsonar.scm.provider=git
 
@@ -534,41 +534,51 @@ jobs:
               --build-arg DETECTED_LANG=${PRIMARY_LANG} \
               -t devsecops-api:latest .
         - name: Run container
-          if: steps.dockerfile_check.outputs.exists == 'true'
           env:
-            PORT_MAP: ${{ needs.detect.outputs.primary_type == 'dotnet' && '8080:8080' || '5000:5000' }}
-            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-            PROJECT_KEY: ${{ needs.detect.outputs.project_key }}
-            SONAR_URL: ${{ env.SONAR_URL }}
+            PRIMARY_TYPE: ${{ needs.detect.outputs.primary_type }}
           run: |
-            docker stop devsecops-api 2>/dev/null || true
-            docker rm devsecops-api 2>/dev/null || true
+            # Determine port based on language
+            if [ "$PRIMARY_TYPE" = "dotnet" ]; then
+              PORT="8080"
+            elif [ "$PRIMARY_TYPE" = "java" ]; then
+              PORT="8080"
+            else
+              PORT="5000"
+            fi
+
+            echo "🚀 Starting container on port $PORT"
+
+            docker stop devsecops-app 2>/dev/null || true
+            docker rm devsecops-app 2>/dev/null || true
+
             docker run -d \
-              -p ${{ env.PORT_MAP }} \
+              -p $PORT:$PORT \
               --name devsecops-app \
               devsecops-app:latest
 
-            sleep 5
-            if curl -sf http://localhost:8080 > /dev/null 2>&1; then
-              echo "✓ App running on port 8080"
-            elif curl -sf http://localhost:5000 > /dev/null 2>&1; then
-              echo "✓ App running on port 5000"
-            else
-              echo "✗ App not responding"
-              docker logs devsecops-app
-              exit 1
-            fi
+            echo "⏳ Waiting for app to start..."
+            sleep 8
 
-            echo "Waiting for API server to start..."
-            for i in {1..30}; do
-              if curl -sf http://localhost:5000/health > /dev/null 2>&1; then
-                echo "✓ API server healthy at http://localhost:5000"
+            # Health check with retries
+            MAX_ATTEMPTS=10
+            ATTEMPT=1
+
+            while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+              echo "Attempt $ATTEMPT/$MAX_ATTEMPTS - checking port $PORT..."
+
+              if curl -sf http://localhost:$PORT > /dev/null 2>&1; then
+                echo "✅ App healthy on port $PORT"
                 exit 0
               fi
-              echo "Attempt $i/30..."
-              sleep 2
+
+              ATTEMPT=$((ATTEMPT + 1))
+              sleep 3
             done
 
-            echo "✗ Health check failed"
-            docker logs devsecops-api
+            echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
+            echo "📋 Container logs:"
+            docker logs devsecops-app
+            echo ""
+            echo "📊 Container status:"
+            docker ps -a | grep devsecops-app
             exit 1
