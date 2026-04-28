@@ -68,9 +68,6 @@ jobs:
           else
             echo "has_creds=false" >> "$GITHUB_OUTPUT"
           fi
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: 🔎 Detect project composition
         id: detect
