@@ -484,4 +484,4 @@ $RECYCLE.BIN/
 *.swp
 
 # .github workflow files
-.github/**
+.github/**azure-credentials.json
