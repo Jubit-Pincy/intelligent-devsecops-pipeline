@@ -234,7 +234,7 @@ hotspot_list = fetch_hotspots(ps=10)
 # ─────────────────────────────────────────────────
 MAX_RISK_SCORE = 100
 LOW_THRESHOLD = 10
-MED_THRESHOLD = 66
+MED_THRESHOLD = 30
 
 raw_risk_score = (bugs_count * WEIGHT_BUGS +
                   vulns_count * WEIGHT_VULNS +
@@ -2064,7 +2064,7 @@ function buildChart(theme) {{
         y: {{
             beginAtZero: true,
             max: 100,
-            ticks: {{ color: tickCol, font: { family: "'IBM Plex Mono'", size: 10 } }},
+            ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }},
             grid:  {{ color: gridCol }},
             border: {{ color: gridCol }}
         }}

@@ -424,6 +424,8 @@ jobs:
     name: 🌤️ Deploy Application
     needs: [detect, risk, deploy-api]
     runs-on: ubuntu-latest
+    outputs:
+      app_url: ${{ steps.get_url.outputs.url }}
     # CRITICAL: Block deployment if risk is HIGH
     if: |
       needs.risk.result == 'success' &&
@@ -504,6 +506,7 @@ jobs:
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --query defaultHostName -o tsv)
           echo "✅ Application deployed: https://$URL"
+          echo "url=https://$URL" >> "$GITHUB_OUTPUT"
 
   # ═══════════════════════════════════════════════════════════════
   # JOB 8: Deployment Blocked (Shows when app deployment is blocked)
