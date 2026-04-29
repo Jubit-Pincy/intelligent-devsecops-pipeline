@@ -388,6 +388,16 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Create Web App if not exists
+        run: |
+          if ! az webapp show --name ${{ secrets.AZURE_WEBAPP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} &>/dev/null; then
+            az webapp create \
+              --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --plan <your-app-service-plan> \
+              --runtime "DOTNETCORE:8.0"
+          fi
+
       - name: Deploy Python App
         if: needs.detect.outputs.primary_type == 'python'
         uses: azure/webapps-deploy@v2
