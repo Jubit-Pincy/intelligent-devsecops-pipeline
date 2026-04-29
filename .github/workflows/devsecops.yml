@@ -381,7 +381,7 @@ jobs:
             az containerapp update \
               --name $API_NAME \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --image $IMAGE
+              --image $IMAGE \
               --set-env-vars \
                 SONAR_URL=${{ env.SONAR_URL }} \
                 PROJECT_KEY=${{ needs.detect.outputs.project_key }} \
@@ -405,7 +405,6 @@ jobs:
                 SONAR_TOKEN=secretref:sonar-token \
                 AZURE_AD_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
                 AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
-
               --cpu 0.5 --memory 1.0Gi \
               --min-replicas 1 --max-replicas 3
           fi
@@ -573,7 +572,7 @@ jobs:
           - **Application:** ${{ needs.deploy-app.result }} ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ (Blocked due to HIGH risk)' || '' }}
           
           ### Deployment Decision
-          ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ **APPLICATION DEPLOYMENT BLOCKED**\n\nHigh security risk detected. Application deployment prevented.\nDevSecOps API deployed for issue remediation.\n\n**Action Required:** Fix vulnerabilities and re-run pipeline.' || '✅ **DEPLOYMENT APPROVED**\n\nSecurity risk acceptable. All systems deployed successfully.' }}
+          ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ **APPLICATION DEPLOYMENT BLOCKED**<br><br>High security risk detected. Application deployment prevented.\nDevSecOps API deployed for issue remediation.<br><br>**Action Required:** Fix vulnerabilities and re-run pipeline.' || '✅ **DEPLOYMENT APPROVED**<br><br>Security risk acceptable. All systems deployed successfully.' }}
           
           ### URLs
           - **DevSecOps API:** ${{ needs.deploy-api.outputs.api_url || 'Not deployed' }}
