@@ -232,14 +232,23 @@ hotspot_list = fetch_hotspots(ps=10)
 # ─────────────────────────────────────────────────
 # Risk scoring
 # ─────────────────────────────────────────────────
-risk_score = (bugs_count * WEIGHT_BUGS +
-              vulns_count * WEIGHT_VULNS +
-              hotspots_count * WEIGHT_HOTSPOTS)
- 
-level = "LOW" if risk_score <= 2 else "MEDIUM" if risk_score <= 5 else "HIGH"
- 
+MAX_RISK_SCORE = 100
+LOW_THRESHOLD = 33
+MED_THRESHOLD = 66
+
+raw_risk_score = (bugs_count * WEIGHT_BUGS +
+                  vulns_count * WEIGHT_VULNS +
+                  hotspots_count * WEIGHT_HOTSPOTS)
+
+risk_score = min(raw_risk_score, MAX_RISK_SCORE)
+risk_score_display = f"{risk_score}/{MAX_RISK_SCORE}"
+
+level = "LOW" if risk_score <= LOW_THRESHOLD else "MEDIUM" if risk_score <= MED_THRESHOLD else "HIGH"
+
 print(f"Weights → Bugs:{WEIGHT_BUGS} Vulns:{WEIGHT_VULNS} Hotspots:{WEIGHT_HOTSPOTS}")
-print(f"Risk Score: {risk_score}  Level: {level}")
+print(f"Raw Risk Score: {raw_risk_score}")
+print(f"Risk Score: {risk_score} / {MAX_RISK_SCORE}  Level: {level}")
+
  
 # ─────────────────────────────────────────────────
 # History & trend
@@ -265,13 +274,15 @@ else:
     trend = "→ Stable"
  
 def _infer_level(score):
-    if score <= 2:   return "LOW"
-    if score <= 5:   return "MEDIUM"
+    if score <= LOW_THRESHOLD: return "LOW"
+    if score <= MED_THRESHOLD: return "MEDIUM"
     return "HIGH"
- 
+
 for entry in history:
+    entry["risk_score"] = min(int(entry.get("risk_score", 0)), MAX_RISK_SCORE)
     if not entry.get("level"):
-        entry["level"] = _infer_level(entry.get("risk_score", 0))
+        entry["level"] = _infer_level(entry["risk_score"])
+
  
 history.append({
     "timestamp":  datetime.now(IST).strftime("%d-%m-%Y %H:%M"),
@@ -1506,7 +1517,7 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   <div class="type-pills">{type_pills}</div>
   <div class="score-ring {risk_cls}">
     <div class="score-num">{risk_score}</div>
-    <div class="score-lbl">Risk Score</div>
+    <div class="score-lbl">Risk Score / 100</div>
   </div>
   <br>
   <span class="level-badge {risk_cls}">{level} Risk</span>
@@ -1597,8 +1608,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
         <div class="r-lbl">Maintainability</div>
       </div>
       <div class="rating-tile">
-        <div class="r-val" style="color:var(--text);">{risk_score}</div>
+        <div class="r-val" style="color:var(--text);">{risk_score_display}</div>
         <div class="r-lbl">Risk Score</div>
+
       </div>
     </div>
   </div>
@@ -1617,9 +1629,10 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
       </div>
     </div>
     <div class="formula-line">
-      Risk = (Bugs * {WEIGHT_BUGS}) + (Vulns * {WEIGHT_VULNS}) + (Hotspots * {WEIGHT_HOTSPOTS})
-      &nbsp;=&nbsp; ({bugs_count}*{WEIGHT_BUGS}) + ({vulns_count}*{WEIGHT_VULNS}) + ({hotspots_count}*{WEIGHT_HOTSPOTS})
-      &nbsp;=&nbsp; <strong style="color:var(--text);">{risk_score}</strong>
+        Raw Risk = (Bugs * {WEIGHT_BUGS}) + (Vulns * {WEIGHT_VULNS}) + (Hotspots * {WEIGHT_HOTSPOTS})
+        &nbsp;=&nbsp; ({bugs_count}*{WEIGHT_BUGS}) + ({vulns_count}*{WEIGHT_VULNS}) + ({hotspots_count}*{WEIGHT_HOTSPOTS})
+        &nbsp;=&nbsp; {raw_risk_score}
+        &nbsp;→&nbsp; Capped Risk Score = <strong style="color:var(--text);">{risk_score_display}</strong>
     </div>
   </div>
 
@@ -2008,7 +2021,7 @@ function buildChart(theme) {{
     data: {{
       labels: CHART_DATA.labels,
       datasets: [{{
-        label: 'Risk Score',
+        label: 'Risk Score (0-100)',
         data: CHART_DATA.scores,
         borderColor: lineCol,
         backgroundColor: fillCol,
@@ -2049,10 +2062,11 @@ function buildChart(theme) {{
           border: {{ color: gridCol }}
         }},
         y: {{
-          beginAtZero: true,
-          ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
-          grid:  {{ color: gridCol }},
-          border: {{ color: gridCol }}
+            beginAtZero: true,
+            max: 100,
+            ticks: { color: tickCol, font: { family: "'IBM Plex Mono'", size: 10 } },
+            grid:  { color: gridCol },
+            border: { color: gridCol }
         }}
       }}
     }}
