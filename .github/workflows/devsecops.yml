@@ -238,6 +238,18 @@ jobs:
           echo "Risk Score: ${SCORE}"
           echo "════════════════════════════════"
 
+      - name: Inject config into report
+        env:
+          PUBLISHED_API_URL: ${{ secrets.API_ENDPOINT || '' }}
+          AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || '' }}
+        run: |
+          for file in reports/security-report.html; do
+            [ -f "$file" ] || continue
+            sed -i "s|__API_ENDPOINT__|${PUBLISHED_API_URL}|g" "$file"
+            sed -i "s|__AZURE_AD_CLIENT_ID__|${AZURE_AD_CLIENT_ID}|g" "$file"
+            sed -i "s|__AZURE_AD_TENANT_ID__|${AZURE_AD_TENANT_ID}|g" "$file"
+          done
       - name: Upload Report
         uses: actions/upload-artifact@v4
         with:
@@ -571,7 +583,8 @@ jobs:
           - **Risk Job Status:** ${{ needs.risk.result }}
           
           ### Deployment Status
-          - **DevSecOps API:** ${{ needs.deploy-api.result }} ✅ (Always deploys)
+          - **DevSecOps API:** ${{ needs.deploy-api.result == 'success' && '✅ Deployed' || needs.deploy-api.result == 'skipped' && '⏭️ Skipped (no Azure creds)' || '❌ Failed' }}
+          - **API URL:** ${{ needs.deploy-api.outputs.api_url || needs.deploy-api.result == 'skipped' && 'N/A' || 'Capture failed — check deploy-api logs' }}
           - **Application:** ${{ needs.deploy-app.result }} ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ (Blocked due to HIGH risk)' || '' }}
           
           ### Deployment Decision

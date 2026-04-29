@@ -2064,7 +2064,7 @@ function buildChart(theme) {{
         y: {{
             beginAtZero: true,
             max: 100,
-            ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }},
+            ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
             grid:  {{ color: gridCol }},
             border: {{ color: gridCol }}
         }}
