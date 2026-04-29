@@ -339,7 +339,7 @@ jobs:
             echo "Creating container app..."
             az containerapp create \
               --name $API_NAME \
-              --resource-group ${{ env_RESOURCE_GROUP }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --environment devsecops-env \
               --image $IMAGE \
               --target-port 5000 \
