@@ -2,9 +2,9 @@ name: DevSecOps Pipeline - Azure Deployment (Fixed)
 
 on:
   push:
-    branches: [ main, Testing ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, Testing ]
+    branches: [ main ]
   workflow_dispatch:
 
 env:
