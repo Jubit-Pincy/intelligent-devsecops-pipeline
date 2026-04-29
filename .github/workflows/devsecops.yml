@@ -218,7 +218,10 @@ jobs:
           WEIGHT_HOTSPOTS: ${{ env.WEIGHT_HOTSPOTS }}
           DETECTED_TYPES: ${{ needs.detect.outputs.types_json }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          API_ENDPOINT: ${{ secrets.API_ENDPOINT || 'http://localhost:5000' }}
+          API_ENDPOINT: __API_ENDPOINT__
+          AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || '__AZURE_AD_CLIENT_ID__' }}
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || '__AZURE_AD_TENANT_ID__' }}
+
         run: |
           mkdir -p reports
           python3 risk-engine/risk-analyzer.py | tee /tmp/risk_output.txt || echo "Risk analysis failed"
@@ -270,7 +273,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════
   publish-report:
     name: 📄 Publish Report
-    needs: risk
+    needs: [risk, deploy-api]
     runs-on: ubuntu-latest
     if: always()
 
@@ -290,6 +293,19 @@ jobs:
           else
             echo "<html><body><h1>Report generation in progress...</h1></body></html>" > public/index.html
           fi
+
+      - name: Inject runtime config into published report
+        env:
+          PUBLISHED_API_URL: ${{ needs.deploy-api.outputs.api_url || secrets.API_ENDPOINT || '' }}
+          AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || '' }}
+        run: |
+          for file in public/index.html public/security-report.html; do
+            [ -f "$file" ] || continue
+            sed -i "s|__API_ENDPOINT__|${PUBLISHED_API_URL}|g" "$file"
+            sed -i "s|__AZURE_AD_CLIENT_ID__|${AZURE_AD_CLIENT_ID}|g" "$file"
+            sed -i "s|__AZURE_AD_TENANT_ID__|${AZURE_AD_TENANT_ID}|g" "$file"
+          done
 
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -366,6 +382,11 @@ jobs:
               --name $API_NAME \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --image $IMAGE
+              --set-env-vars \
+                SONAR_URL=${{ env.SONAR_URL }} \
+                PROJECT_KEY=${{ needs.detect.outputs.project_key }} \
+                AZURE_AD_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
+                AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
           else
             echo "Creating container app..."
             az containerapp create \
@@ -382,6 +403,9 @@ jobs:
                 SONAR_URL=${{ env.SONAR_URL }} \
                 PROJECT_KEY=${{ needs.detect.outputs.project_key }} \
                 SONAR_TOKEN=secretref:sonar-token \
+                AZURE_AD_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
+                AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
+
               --cpu 0.5 --memory 1.0Gi \
               --min-replicas 1 --max-replicas 3
           fi

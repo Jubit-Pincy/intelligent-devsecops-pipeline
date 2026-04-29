@@ -33,6 +33,9 @@ PROJECT_REPO   = os.getenv("GITHUB_REPO_URL",
 RUNNING_APP    = os.getenv("RUNNING_APP_URL", "http://localhost:8081/")
 GITHUB_RUN_URL = os.getenv("GITHUB_RUN_URL", "#")
 API_ENDPOINT   = os.getenv("API_ENDPOINT", "")
+AZURE_AD_CLIENT_ID = os.getenv("AZURE_AD_CLIENT_ID", "__AZURE_AD_CLIENT_ID__")
+AZURE_AD_TENANT_ID = os.getenv("AZURE_AD_TENANT_ID", "__AZURE_AD_TENANT_ID__")
+
  
 _raw_types = os.getenv("DETECTED_TYPES", '["unknown"]')
 try:
@@ -564,6 +567,10 @@ h_labels = json.dumps([e["timestamp"]  for e in history])
 h_scores = json.dumps([e["risk_score"] for e in history])
 h_levels = json.dumps([e.get("level","") for e in history])
 lang_chart_data = json.dumps(language_data)
+api_endpoint_js = json.dumps(API_ENDPOINT or "__API_ENDPOINT__")
+azure_ad_client_id_js = json.dumps(AZURE_AD_CLIENT_ID)
+azure_ad_tenant_id_js = json.dumps(AZURE_AD_TENANT_ID)
+
  
 # Misc
 type_pills = "".join(
@@ -1654,7 +1661,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
    Theme management
 ══════════════════════════════════════════════════════ */
 var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
-var API_ENDPOINT = '{API_ENDPOINT}';
+var API_ENDPOINT = {api_endpoint_js};
+var AZURE_AD_CLIENT_ID = {azure_ad_client_id_js};
+var AZURE_AD_TENANT_ID = {azure_ad_tenant_id_js};
  
 function resolveTheme(pref) {{
   if (pref === 'system') return MEDIA.matches ? 'dark' : 'light';
@@ -1727,130 +1736,152 @@ function toggleRow(uid) {{
 /* ══════════════════════════════════════════════════════
    Resolve issue in SonarCloud
 ══════════════════════════════════════════════════════ */
-// Obtain Azure AD token before calling API
+var TRANSITION_LABELS = {{
+  wontfix: "Won't Fix",
+  falsepositive: 'False Positive',
+  resolve: 'Resolved'
+}};
+
+function isConfigured(value) {{
+  return !!value &&
+         value.indexOf('__') !== 0 &&
+         !/^https?:\/\/localhost(?::\\d+)?\/?$/i.test(value);
+}}
+
+var msalInstancePromise = null;
+
+async function getMsalInstance() {{
+  if (typeof msal === 'undefined') {{
+    throw new Error('Microsoft authentication library failed to load.');
+  }}
+  if (!isConfigured(AZURE_AD_CLIENT_ID) || !isConfigured(AZURE_AD_TENANT_ID)) {{
+    throw new Error('Azure AD authentication is not configured for this report.');
+  }}
+
+  if (!msalInstancePromise) {{
+    var instance = new msal.PublicClientApplication({{
+      auth: {{
+        clientId: AZURE_AD_CLIENT_ID,
+        authority: 'https://login.microsoftonline.com/' + AZURE_AD_TENANT_ID,
+        redirectUri: window.location.origin + window.location.pathname
+      }}
+    }});
+
+    msalInstancePromise = typeof instance.initialize === 'function'
+      ? instance.initialize().then(function() {{ return instance; }})
+      : Promise.resolve(instance);
+  }}
+
+  return msalInstancePromise;
+}}
+
 async function getAccessToken() {{
-  const config = {{
-    auth: {{
-      clientId: 'AZURE_AD_CLIENT_ID',  // From environment
-      authority: 'https://login.microsoftonline.com/TENANT_ID',
-      redirectUri: window.location.origin
+  var tokenRequest = {{
+    scopes: ['api://' + AZURE_AD_CLIENT_ID + '/.default']
+  }};
+  var instance = await getMsalInstance();
+  var accounts = typeof instance.getAllAccounts === 'function' ? instance.getAllAccounts() : [];
+
+  if (!accounts.length) {{
+    var loginResponse = await instance.loginPopup(tokenRequest);
+    if (loginResponse && loginResponse.account) {{
+      accounts = [loginResponse.account];
+    }} else {{
+      accounts = instance.getAllAccounts();
     }}
-  }};
-  
-  const msalInstance = new msal.PublicClientApplication(config);
-  
-  const tokenRequest = {{
-    scopes: [`api://${{config.auth.clientId}}/.default`]
-  }};
-  
-  const response = await msalInstance.acquireTokenSilent(tokenRequest);
-  return response.accessToken;
+  }}
+
+  var account = accounts[0];
+  if (!account) {{
+    throw new Error('No signed-in Azure AD account is available.');
+  }}
+
+  try {{
+    var silentResponse = await instance.acquireTokenSilent({{
+      scopes: tokenRequest.scopes,
+      account: account
+    }});
+    return silentResponse.accessToken;
+  }} catch (silentError) {{
+    var popupResponse = await instance.acquireTokenPopup({{
+      scopes: tokenRequest.scopes,
+      account: account
+    }});
+    return popupResponse.accessToken;
+  }}
 }}
 
 async function resolveIssue(issueKey, transition, event) {{
   event.stopPropagation();
-  
-  if (!confirm(`Mark this issue as "${{transition}}"?`)) return;
-  
-  try {{
-    const token = await getAccessToken();
-    
-    const response = await fetch(`${{API_ENDPOINT}}/api/resolve-issue`, {{
-      method: 'POST',
-      headers: {{
-        'Authorization': `Bearer ${{token}}`,
-        'Content-Type': 'application/json'
-      }},
-      body: JSON.stringify({{
-        issue_key: issueKey,
-        transition: transition,
-        comment: `Resolved via dashboard on ${{new Date().toISOString()}}`
-      }})
-    }});
-    
-    if (response.ok) {{
-      alert('✓ Issue resolved successfully!');
-      setTimeout(() => window.location.reload(), 2000);
-    }} else {{
-      const error = await response.json();
-      alert(`✗ Failed: ${{error.error}}`);
-    }}
-  }} catch (err) {{
-    alert(`✗ Authentication error: ${{err.message}}`);
-  }}
-}}
-  
-  var confirmMsg = 'Mark this issue as "' + transitionLabels[transition] + '" in SonarCloud?';
+
+  var label = TRANSITION_LABELS[transition] || transition;
+  var confirmMsg = 'Mark this issue as "' + label + '" in SonarCloud?';
   if (!confirm(confirmMsg)) return;
-  
+
   var btn = event.target.closest('.resolve-btn');
   var originalHTML = btn ? btn.innerHTML : '';
-  
+
   if (btn) {{
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
   }}
-  
-  var apiUrl = API_ENDPOINT || 'http://localhost:5001';
 
-  // Check if API endpoint is configured
-  if (!API_ENDPOINT || API_ENDPOINT === '{{API_ENDPOINT}}' || API_ENDPOINT === 'http://localhost:5000') {{
-    // Fallback to manual instructions
+  if (!isConfigured(API_ENDPOINT)) {{
     alert('API endpoint not configured.\\n\\n' +
           'To resolve issue ' + issueKey + ':\\n' +
           '1. Go to SonarCloud\\n' +
           '2. Find the issue\\n' +
           '3. Use the "Resolve" dropdown\\n' +
-          '4. Select: ' + transitionLabels[transition]);
-    
+          '4. Select: ' + label);
+
     if (btn) {{
       btn.disabled = false;
       btn.innerHTML = originalHTML;
     }}
     return;
   }}
-  
-  // Call the API
-  fetch(API_ENDPOINT + '/api/resolve-issue', {{
-    method: 'POST',
-    headers: {{
-      'Content-Type': 'application/json',
-    }},
-    body: JSON.stringify({{
-      issue_key: issueKey,
-      transition: transition,
-      comment: 'Resolved via DevSecOps Dashboard on ' + new Date().toISOString()
-    }})
-  }})
-  .then(function(response) {{
-    return response.json().then(function(data) {{
-      return {{ ok: response.ok, status: response.status, data: data }};
+
+  try {{
+    var token = await getAccessToken();
+    var response = await fetch(API_ENDPOINT.replace(/\/+$/, '') + '/api/resolve-issue', {{
+      method: 'POST',
+      headers: {{
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      }},
+      body: JSON.stringify({{
+        issue_key: issueKey,
+        transition: transition,
+        comment: 'Resolved via DevSecOps Dashboard on ' + new Date().toISOString()
+      }})
     }});
-  }})
-  .then(function(result) {{
-    if (result.ok) {{
-      alert('✓ Issue marked as ' + transitionLabels[transition] + ' successfully!\\n\\n' +
-            'Refresh the page to see updated status.');
-      
-      // Optionally refresh the page after 2 seconds
-      setTimeout(function() {{
-        window.location.reload();
-      }}, 2000);
-    }} else {{
-      throw new Error(result.data.error || 'Failed to resolve issue');
+
+    var result = {{}};
+    try {{
+      result = await response.json();
+    }} catch (parseError) {{
+      result = {{}};
     }}
-  }})
-  .catch(function(error) {{
+
+    if (!response.ok) {{
+      throw new Error(result.error || 'Failed to resolve issue');
+    }}
+
+    alert('✓ Issue marked as ' + label + ' successfully!\\n\\nRefresh the page to see updated status.');
+    setTimeout(function() {{
+      window.location.reload();
+    }}, 1500);
+  }} catch (error) {{
     alert('✗ Failed to resolve issue\\n\\n' +
           'Error: ' + error.message + '\\n\\n' +
           'Please try again or resolve manually in SonarCloud.');
     console.error('Resolve error:', error);
-    
+
     if (btn) {{
       btn.disabled = false;
       btn.innerHTML = originalHTML;
     }}
-  }});
+  }}
 }}
  
 /* ══════════════════════════════════════════════════════
