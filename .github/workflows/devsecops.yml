@@ -55,9 +55,6 @@ jobs:
           REPO_NAME="${{ github.event.repository.name }}"
           echo "project_key=${REPO_NAME}" >> "$GITHUB_OUTPUT"
           
-          # Exclude risk-engine from detection
-          EXCLUDE="-not -path ./risk-engine/* -not -path ./.github/*"
-          
           TYPES=()
           HAS_APP=false
           
@@ -66,16 +63,16 @@ jobs:
             HAS_APP=true
           fi
           
-          # Detect languages
-          if find . -name "*.csproj" $EXCLUDE 2>/dev/null | grep -q .; then
+          # Detect languages (fixed find commands)
+          if find . -name "*.csproj" -not -path "./risk-engine/*" -not -path "./.github/*" 2>/dev/null | grep -q .; then
             TYPES+=("dotnet")
           fi
           
-          if [ -f "pom.xml" ] || find . -name "build.gradle" $EXCLUDE 2>/dev/null | grep -q .; then
+          if [ -f "pom.xml" ] || find . -name "build.gradle" -not -path "./risk-engine/*" -not -path "./.github/*" 2>/dev/null | grep -q .; then
             TYPES+=("java")
           fi
           
-          if find . -name "*.py" $EXCLUDE 2>/dev/null | grep -q .; then
+          if find . -name "*.py" -not -path "./risk-engine/*" -not -path "./.github/*" 2>/dev/null | grep -q .; then
             if [ -f "requirements.txt" ] || [ -f "src/requirements.txt" ]; then
               TYPES+=("python")
             fi
@@ -230,7 +227,7 @@ jobs:
           
           # Extract risk level (default to MEDIUM if failed)
           LEVEL=$(grep -oP '(?<=Level: )\w+' /tmp/risk_output.txt 2>/dev/null | tail -1 || echo "MEDIUM")
-          SCORE=$(grep -oP '(?<=Risk Score: )\d+' /tmp/risk_output.txt 2>/dev/null | tail -1 || echo "0")
+          SCORE=$(grep -oP '(?<=Score: )\d+' /tmp/risk_output.txt 2>/dev/null | tail -1 || echo "0")
           
           echo "risk_level=${LEVEL}" >> "$GITHUB_OUTPUT"
           echo "risk_score=${SCORE}" >> "$GITHUB_OUTPUT"
@@ -342,7 +339,7 @@ jobs:
             echo "Creating container app..."
             az containerapp create \
               --name $API_NAME \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --resource-group ${{ env_RESOURCE_GROUP }} \
               --environment devsecops-env \
               --image $IMAGE \
               --target-port 5000 \
