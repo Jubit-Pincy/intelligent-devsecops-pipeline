@@ -1,4 +1,4 @@
-name: DevSecOps Pipeline - Fixed for Azure Student Deployment
+name: DevSecOps Pipeline - Azure Deployment (Fixed)
 
 on:
   push:
@@ -32,9 +32,22 @@ jobs:
       primary_type: ${{ steps.detect.outputs.primary_type }}
       project_key:  ${{ steps.detect.outputs.project_key }}
       has_app: ${{ steps.detect.outputs.has_app }}
+      has_azure_creds: ${{ steps.check_azure.outputs.has_creds }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check Azure Credentials
+        id: check_azure
+        run: |
+          # This runs in a step where secrets ARE available
+          if [ -n "${{ secrets.AZURE_CLIENT_ID }}" ]; then
+            echo "has_creds=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Azure credentials detected"
+          else
+            echo "has_creds=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️  No Azure credentials found"
+          fi
 
       - name: Detect project type
         id: detect
@@ -257,8 +270,8 @@ jobs:
 
       - name: Create placeholder if no report
         run: |
+          mkdir -p public
           if [ ! -f "public/security-report.html" ]; then
-            mkdir -p public
             echo "<html><body><h1>Report generation in progress...</h1></body></html>" > public/index.html
           fi
 
@@ -276,11 +289,11 @@ jobs:
     name: 🚀 Deploy API
     needs: [detect, risk]
     runs-on: ubuntu-latest
-    # SIMPLIFIED CHECK - just verify Azure secrets exist
+    # FIX: Use output from detect job instead of secrets context
     if: |
       always() &&
       needs.detect.outputs.primary_type != 'unknown' &&
-      secrets.AZURE_CLIENT_ID != ''
+      needs.detect.outputs.has_azure_creds == 'true'
     outputs:
       api_url: ${{ steps.deploy.outputs.url }}
 
@@ -360,11 +373,11 @@ jobs:
     name: 🌤️ Deploy App
     needs: [detect, risk, deploy-api]
     runs-on: ubuntu-latest
-    # Deploy if we have app code AND Azure credentials
+    # FIX: Use output from detect job instead of secrets context
     if: |
       always() &&
       needs.detect.outputs.has_app == 'true' &&
-      secrets.AZURE_CLIENT_ID != ''
+      needs.detect.outputs.has_azure_creds == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -435,6 +448,7 @@ jobs:
           ### Detection
           - **Project Type:** ${{ needs.detect.outputs.primary_type }}
           - **Has Application:** ${{ needs.detect.outputs.has_app }}
+          - **Azure Credentials:** ${{ needs.detect.outputs.has_azure_creds }}
           
           ### Security
           - **Risk Level:** ${{ needs.risk.outputs.risk_level || 'Not Available' }}
