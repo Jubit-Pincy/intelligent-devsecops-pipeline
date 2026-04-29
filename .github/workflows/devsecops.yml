@@ -394,7 +394,7 @@ jobs:
             az webapp create \
               --name ${{ secrets.AZURE_WEBAPP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --plan <your-app-service-plan> \
+              --plan plan-weather \
               --runtime "DOTNETCORE:8.0"
           fi
 
