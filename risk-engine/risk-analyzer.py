@@ -618,19 +618,16 @@ html = f"""<!DOCTYPE html>
 -->
 <script>
 (function () {{
-  var saved = '';
-  try {{ saved = localStorage.getItem('dso-theme') || ''; }} catch (e) {{}}
-  if (!saved) saved = 'dark';
-  var resolved = saved;
-  if (saved === 'system') {{
-    try {{
-      resolved = window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark' : 'light';
-    }} catch (e) {{ resolved = 'dark'; }}
-  }}
+  var resolved = 'dark';
+  try {{
+    var saved = localStorage.getItem('dso-theme') || 'dark';
+    resolved = saved === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : saved;
+  }} catch (e) {{ resolved = 'dark'; }}
   document.documentElement.setAttribute('data-theme', resolved);
   window.__dsoInitialTheme = resolved;
-  window.__dsoSavedPref    = saved;
+  window.__dsoSavedPref = resolved;
 }})();
 </script>
 
@@ -644,13 +641,7 @@ html = f"""<!DOCTYPE html>
 -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 
-<script src={chartjs_tag} crossorigin="anonymous"></script>
-<script>
-// Wait for Chart.js to load
-if (typeof Chart === 'undefined') {{
-  console.error('Chart.js failed to load');
-}}
-</script>
+{chartjs_tag}
 
 <style>
 /* ═══════════════════════════════════════════════
@@ -1686,11 +1677,14 @@ function applyTheme(saved) {{
  
 var currentTheme = 'dark';
 function setTheme(pref) {{
-    currentTheme = pref;
-    document.documentElement.setAttribute('data-theme', pref);
-    syncToggleButtons(pref);
-    rebuildChart(pref);
-    rebuildLangChart();
+  var resolved = pref === 'system'
+    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : pref;
+  try {{ localStorage.setItem('dso-theme', pref); }} catch(e) {{}}
+  document.documentElement.setAttribute('data-theme', resolved);
+  syncToggleButtons(pref);
+  rebuildChart(resolved);
+  rebuildLangChart();
 }}
  
 (function() {{
