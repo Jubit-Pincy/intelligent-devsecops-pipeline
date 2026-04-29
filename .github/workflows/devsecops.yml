@@ -223,7 +223,7 @@ jobs:
           API_ENDPOINT: ${{ secrets.API_ENDPOINT || 'http://localhost:5000' }}
         run: |
           mkdir -p reports
-          python3 risk-analyzer.py | tee /tmp/risk_output.txt || echo "Risk analysis failed, continuing..."
+          python3 risk-engine/risk-analyzer.py | tee /tmp/risk_output.txt || echo "Risk analysis failed, continuing..."
           
           # Extract risk level (default to MEDIUM if failed)
           LEVEL=$(grep -oP '(?<=Level: )\w+' /tmp/risk_output.txt 2>/dev/null | tail -1 || echo "MEDIUM")
