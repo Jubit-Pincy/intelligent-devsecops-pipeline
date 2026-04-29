@@ -233,7 +233,7 @@ hotspot_list = fetch_hotspots(ps=10)
 # Risk scoring
 # ─────────────────────────────────────────────────
 MAX_RISK_SCORE = 100
-LOW_THRESHOLD = 33
+LOW_THRESHOLD = 10
 MED_THRESHOLD = 66
 
 raw_risk_score = (bugs_count * WEIGHT_BUGS +

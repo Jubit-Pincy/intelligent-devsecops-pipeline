@@ -240,11 +240,11 @@ jobs:
 
       - name: Upload Report
         uses: actions/upload-artifact@v4
-        if: hashFiles('reports/security-report.html') != ''
         with:
           name: security-dashboard
           path: reports/security-report.html
           retention-days: 30
+          if-no-files-found: warn
 
       - name: ❌ Fail pipeline if HIGH risk
         if: steps.risk.outputs.risk_level == 'HIGH'
