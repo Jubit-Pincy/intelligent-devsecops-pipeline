@@ -439,6 +439,16 @@ jobs:
             --query defaultHostName -o tsv)
           echo "✅ App: https://$URL"
 
+      - name: Set API URL output
+        id: deploy
+        run: |
+          URL=$(az containerapp show \
+            --name ${{ secrets.AZURE_API_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "url=https://$URL" >> "$GITHUB_OUTPUT"
+          echo "✅ API: https://$URL"
+
   # ═══════════════════════════════════════════════════════════════
   # JOB 8: Summary
   # ═══════════════════════════════════════════════════════════════

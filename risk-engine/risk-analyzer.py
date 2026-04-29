@@ -18,7 +18,7 @@ Fixes in this version:
 """
  
 from datetime import datetime, timezone, timedelta
-import os, sys, json, requests
+import os, sys, json, requests, urllib.request
  
 # ─────────────────────────────────────────────────
 # Config
@@ -597,6 +597,14 @@ now_str = datetime.now(IST).strftime("%d %b %Y - %H:%M:%S IST")
 # ─────────────────────────────────────────────────
 # HTML report
 # ─────────────────────────────────────────────────
+try:
+    chartjs = urllib.request.urlopen(
+        "https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"
+    ).read().decode()
+    chartjs_tag = f"<script>{chartjs}</script>"
+except:
+    chartjs_tag = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>'
+
 html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -636,7 +644,7 @@ html = f"""<!DOCTYPE html>
 -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script src={chartjs_tag} crossorigin="anonymous"></script>
 <script>
 // Wait for Chart.js to load
 if (typeof Chart === 'undefined') {{
@@ -1676,9 +1684,13 @@ function applyTheme(saved) {{
   rebuildLangChart();
 }}
  
+var currentTheme = 'dark';
 function setTheme(pref) {{
-  try {{ localStorage.setItem('dso-theme', pref); }} catch(e) {{}}
-  applyTheme(pref);
+    currentTheme = pref;
+    document.documentElement.setAttribute('data-theme', pref);
+    syncToggleButtons(pref);
+    rebuildChart(pref);
+    rebuildLangChart();
 }}
  
 (function() {{
