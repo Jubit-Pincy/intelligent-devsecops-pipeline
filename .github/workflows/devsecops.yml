@@ -1,4 +1,4 @@
-name: DevSecOps Pipeline - Azure Deployment (Fixed)
+name: DevSecOps Pipeline - Risk-Adaptive Deployment
 
 on:
   push:
@@ -40,7 +40,6 @@ jobs:
       - name: Check Azure Credentials
         id: check_azure
         run: |
-          # This runs in a step where secrets ARE available
           if [ -n "${{ secrets.AZURE_CLIENT_ID }}" ]; then
             echo "has_creds=true" >> "$GITHUB_OUTPUT"
             echo "✅ Azure credentials detected"
@@ -63,7 +62,7 @@ jobs:
             HAS_APP=true
           fi
           
-          # Detect languages (fixed find commands)
+          # Detect languages (exclude risk-engine)
           if find . -name "*.csproj" -not -path "./risk-engine/*" -not -path "./.github/*" 2>/dev/null | grep -q .; then
             TYPES+=("dotnet")
           fi
@@ -192,7 +191,6 @@ jobs:
     name: 📊 Risk Analysis
     needs: [detect, sonar]
     runs-on: ubuntu-latest
-    # Don't fail if sonar has issues - continue with deployment
     if: always() && needs.detect.outputs.primary_type != 'unknown'
     outputs:
       risk_level: ${{ steps.risk.outputs.risk_level }}
@@ -223,17 +221,19 @@ jobs:
           API_ENDPOINT: ${{ secrets.API_ENDPOINT || 'http://localhost:5000' }}
         run: |
           mkdir -p reports
-          python3 risk-engine/risk-analyzer.py | tee /tmp/risk_output.txt || echo "Risk analysis failed, continuing..."
+          python3 risk-engine/risk-analyzer.py | tee /tmp/risk_output.txt || echo "Risk analysis failed"
           
-          # Extract risk level (default to MEDIUM if failed)
-          LEVEL=$(grep -oP '(?<=Level: )\w+' /tmp/risk_output.txt 2>/dev/null | tail -1 || echo "MEDIUM")
-          SCORE=$(grep -oP '(?<=Score: )\d+' /tmp/risk_output.txt 2>/dev/null | tail -1 || echo "0")
+          # Extract risk level (default to HIGH if failed - block deployment)
+          LEVEL=$(grep -oP '(?<=Level: )\w+' /tmp/risk_output.txt 2>/dev/null | tail -1 || echo "HIGH")
+          SCORE=$(grep -oP '(?<=Score: )\d+' /tmp/risk_output.txt 2>/dev/null | tail -1 || echo "999")
           
           echo "risk_level=${LEVEL}" >> "$GITHUB_OUTPUT"
           echo "risk_score=${SCORE}" >> "$GITHUB_OUTPUT"
           
+          echo "════════════════════════════════"
           echo "Risk Level: ${LEVEL}"
           echo "Risk Score: ${SCORE}"
+          echo "════════════════════════════════"
 
       - name: Upload Report
         uses: actions/upload-artifact@v4
@@ -243,13 +243,30 @@ jobs:
           path: reports/security-report.html
           retention-days: 30
 
-      - name: Check Risk Level
+      - name: ❌ Fail pipeline if HIGH risk
         if: steps.risk.outputs.risk_level == 'HIGH'
         run: |
-          echo "::warning::HIGH risk detected, but deployment will continue"
+          echo "::error::🚨 HIGH RISK DETECTED - Application deployment BLOCKED"
+          echo "::error::Risk Score: ${{ steps.risk.outputs.risk_score }}"
+          echo "::error::Review security dashboard for details"
+          echo ""
+          echo "═══════════════════════════════════════════════"
+          echo "  ⛔ BUILD BLOCKED - HIGH SECURITY RISK"
+          echo "═══════════════════════════════════════════════"
+          echo ""
+          echo "Risk Score: ${{ steps.risk.outputs.risk_score }}"
+          echo ""
+          echo "Action required:"
+          echo "  1. Review security report in artifacts"
+          echo "  2. Fix critical vulnerabilities"
+          echo "  3. Re-run pipeline after fixes"
+          echo ""
+          echo "Note: DevSecOps API will still deploy for issue management"
+          echo "═══════════════════════════════════════════════"
+          exit 1
 
   # ═══════════════════════════════════════════════════════════════
-  # JOB 5: Publish Report
+  # JOB 5: Publish Report (Always runs)
   # ═══════════════════════════════════════════════════════════════
   publish-report:
     name: 📄 Publish Report
@@ -282,13 +299,13 @@ jobs:
         id: deployment
 
   # ═══════════════════════════════════════════════════════════════
-  # JOB 6: Deploy DevSecOps API
+  # JOB 6: Deploy DevSecOps API (Always deploys - needed for remediation)
   # ═══════════════════════════════════════════════════════════════
   deploy-api:
-    name: 🚀 Deploy API
+    name: 🚀 Deploy DevSecOps API
     needs: [detect, risk]
     runs-on: ubuntu-latest
-    # FIX: Use output from detect job instead of secrets context
+    # API ALWAYS deploys (even on HIGH risk) - it's needed to manage issues
     if: |
       always() &&
       needs.detect.outputs.primary_type != 'unknown' &&
@@ -298,6 +315,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Show deployment decision
+        run: |
+          echo "═══════════════════════════════════════════════"
+          echo "  DevSecOps API Deployment"
+          echo "═══════════════════════════════════════════════"
+          echo ""
+          echo "Risk Level: ${{ needs.risk.outputs.risk_level }}"
+          echo "Risk Score: ${{ needs.risk.outputs.risk_score }}"
+          echo ""
+          echo "ℹ️  API deployment proceeding regardless of risk level"
+          echo "   (Required for issue resolution and remediation)"
+          echo ""
 
       - name: Azure Login (OIDC)
         uses: azure/login@v1
@@ -330,7 +360,6 @@ jobs:
           ACR_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
           IMAGE: ${{ secrets.ACR_LOGIN_SERVER }}/devsecops-api:${{ github.sha }}
         run: |
-          # Create or update
           if az containerapp show --name $API_NAME --resource-group ${{ env.AZURE_RESOURCE_GROUP }} &>/dev/null; then
             echo "Updating container app..."
             az containerapp update \
@@ -363,23 +392,36 @@ jobs:
             --query properties.configuration.ingress.fqdn -o tsv)
           
           echo "url=https://$URL" >> "$GITHUB_OUTPUT"
-          echo "✅ API: https://$URL"
+          echo "✅ DevSecOps API deployed: https://$URL"
 
   # ═══════════════════════════════════════════════════════════════
-  # JOB 7: Deploy Application (if exists)
+  # JOB 7: Deploy Application (BLOCKED on HIGH risk)
   # ═══════════════════════════════════════════════════════════════
   deploy-app:
-    name: 🌤️ Deploy App
+    name: 🌤️ Deploy Application
     needs: [detect, risk, deploy-api]
     runs-on: ubuntu-latest
-    # FIX: Use output from detect job instead of secrets context
+    # CRITICAL: Block deployment if risk is HIGH
     if: |
-      always() &&
+      needs.risk.result == 'success' &&
+      needs.risk.outputs.risk_level != 'HIGH' &&
       needs.detect.outputs.has_app == 'true' &&
       needs.detect.outputs.has_azure_creds == 'true'
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Show deployment decision
+        run: |
+          echo "═══════════════════════════════════════════════"
+          echo "  Application Deployment - APPROVED"
+          echo "═══════════════════════════════════════════════"
+          echo ""
+          echo "Risk Level: ${{ needs.risk.outputs.risk_level }}"
+          echo "Risk Score: ${{ needs.risk.outputs.risk_score }}"
+          echo ""
+          echo "✅ Risk level acceptable - proceeding with deployment"
+          echo ""
 
       - name: Azure Login
         uses: azure/login@v1
@@ -391,6 +433,7 @@ jobs:
       - name: Create Web App if not exists
         run: |
           if ! az webapp show --name ${{ secrets.AZURE_WEBAPP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} &>/dev/null; then
+            echo "Creating web app..."
             az webapp create \
               --name ${{ secrets.AZURE_WEBAPP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
@@ -437,24 +480,51 @@ jobs:
             --name ${{ secrets.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --query defaultHostName -o tsv)
-          echo "✅ App: https://$URL"
-
-      - name: Set API URL output
-        id: deploy
-        run: |
-          URL=$(az containerapp show \
-            --name ${{ secrets.AZURE_API_NAME }} \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --query properties.configuration.ingress.fqdn -o tsv)
-          echo "url=https://$URL" >> "$GITHUB_OUTPUT"
-          echo "✅ API: https://$URL"
+          echo "✅ Application deployed: https://$URL"
 
   # ═══════════════════════════════════════════════════════════════
-  # JOB 8: Summary
+  # JOB 8: Deployment Blocked (Shows when app deployment is blocked)
+  # ═══════════════════════════════════════════════════════════════
+  deployment-blocked:
+    name: ⛔ Deployment Blocked
+    needs: [detect, risk]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      needs.risk.outputs.risk_level == 'HIGH' &&
+      needs.detect.outputs.has_app == 'true'
+
+    steps:
+      - name: Show blocking reason
+        run: |
+          echo "═══════════════════════════════════════════════"
+          echo "  ⛔ APPLICATION DEPLOYMENT BLOCKED"
+          echo "═══════════════════════════════════════════════"
+          echo ""
+          echo "Risk Level: HIGH"
+          echo "Risk Score: ${{ needs.risk.outputs.risk_score }}"
+          echo ""
+          echo "Security issues prevent application deployment:"
+          echo "  • Critical vulnerabilities detected"
+          echo "  • Risk score exceeds acceptable threshold"
+          echo ""
+          echo "Actions required:"
+          echo "  1. Review security dashboard"
+          echo "  2. Fix identified vulnerabilities"
+          echo "  3. Use DevSecOps API to resolve issues"
+          echo "  4. Re-run pipeline after remediation"
+          echo ""
+          echo "DevSecOps API URL: ${{ needs.deploy-api.outputs.api_url }}"
+          echo "Security Report: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          echo ""
+          echo "═══════════════════════════════════════════════"
+
+  # ═══════════════════════════════════════════════════════════════
+  # JOB 9: Summary
   # ═══════════════════════════════════════════════════════════════
   summary:
     name: 📋 Summary
-    needs: [detect, risk, deploy-api, deploy-app, publish-report]
+    needs: [detect, risk, deploy-api, deploy-app, publish-report, deployment-blocked]
     runs-on: ubuntu-latest
     if: always()
 
@@ -469,15 +539,20 @@ jobs:
           - **Has Application:** ${{ needs.detect.outputs.has_app }}
           - **Azure Credentials:** ${{ needs.detect.outputs.has_azure_creds }}
           
-          ### Security
+          ### Security Analysis
           - **Risk Level:** ${{ needs.risk.outputs.risk_level || 'Not Available' }}
           - **Risk Score:** ${{ needs.risk.outputs.risk_score || 'N/A' }}
+          - **Risk Job Status:** ${{ needs.risk.result }}
           
-          ### Deployment
-          - **API Status:** ${{ needs.deploy-api.result }}
-          - **App Status:** ${{ needs.deploy-app.result }}
+          ### Deployment Status
+          - **DevSecOps API:** ${{ needs.deploy-api.result }} ✅ (Always deploys)
+          - **Application:** ${{ needs.deploy-app.result }} ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ (Blocked due to HIGH risk)' || '' }}
+          
+          ### Deployment Decision
+          ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ **APPLICATION DEPLOYMENT BLOCKED**\n\nHigh security risk detected. Application deployment prevented.\nDevSecOps API deployed for issue remediation.\n\n**Action Required:** Fix vulnerabilities and re-run pipeline.' || '✅ **DEPLOYMENT APPROVED**\n\nSecurity risk acceptable. All systems deployed successfully.' }}
           
           ### URLs
-          - **API:** ${{ needs.deploy-api.outputs.api_url || 'Not deployed' }}
-          - **Dashboard:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          - **DevSecOps API:** ${{ needs.deploy-api.outputs.api_url || 'Not deployed' }}
+          - **Application:** ${{ needs.risk.outputs.risk_level == 'HIGH' && 'Blocked (HIGH risk)' || needs.deploy-app.result == 'success' && 'Deployed successfully' || 'Not deployed' }}
+          - **Security Dashboard:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
           EOF
