@@ -1856,7 +1856,7 @@ async function resolveIssue(issueKey, transition, event) {{
 
   try {{
     var token = await getAccessToken();
-    var response = await fetch(API_ENDPOINT.replace(/\/+$/, '') + '/api/resolve-issue', {{
+    var response = await fetch(API_ENDPOINT.replace(/\\/+$/, '') + '/api/resolve-issue', {{
       method: 'POST',
       headers: {{
         'Authorization': 'Bearer ' + token,
@@ -2064,9 +2064,9 @@ function buildChart(theme) {{
         y: {{
             beginAtZero: true,
             max: 100,
-            ticks: { color: tickCol, font: { family: "'IBM Plex Mono'", size: 10 } },
-            grid:  { color: gridCol },
-            border: { color: gridCol }
+            ticks: {{ color: tickCol, font: { family: "'IBM Plex Mono'", size: 10 } }},
+            grid:  {{ color: gridCol }},
+            border: {{ color: gridCol }}
         }}
       }}
     }}
