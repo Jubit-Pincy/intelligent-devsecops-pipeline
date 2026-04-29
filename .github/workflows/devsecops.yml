@@ -59,7 +59,7 @@ jobs:
           HAS_APP=false
           
           # Check for actual app code
-          if [ -d "src" ] || [ -f "app.py" ] || [ -f "index.js" ] || [ -f "Program.cs" ]; then
+          if [ -d "src" ] || [ -d "App" ] || [ -f "app.py" ] || [ -f "index.js" ] || [ -f "Program.cs" ]; then
             HAS_APP=true
           fi
           
@@ -268,7 +268,9 @@ jobs:
       - name: Create placeholder if no report
         run: |
           mkdir -p public
-          if [ ! -f "public/security-report.html" ]; then
+          if [ -f "public/security-report.html" ]; then
+            cp public/security-report.html public/index.html
+          else
             echo "<html><body><h1>Report generation in progress...</h1></body></html>" > public/index.html
           fi
 
