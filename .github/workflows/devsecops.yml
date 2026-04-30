@@ -440,7 +440,8 @@ jobs:
                 SONAR_URL=${{ env.SONAR_URL }} \
                 PROJECT_KEY=${{ needs.detect.outputs.project_key }} \
                 AZURE_AD_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
-                AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
+                AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
+                AZURE_AD_DASHBOARD_CLIENT_ID=${{ secrets.AZURE_DASHBOARD_CLIENT_ID }}
           else
             echo "Creating container app..."
             az containerapp create \
@@ -459,6 +460,7 @@ jobs:
                 SONAR_TOKEN=secretref:sonar-token \
                 AZURE_AD_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
                 AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
+                AZURE_AD_DASHBOARD_CLIENT_ID=${{ secrets.AZURE_DASHBOARD_CLIENT_ID }} \
               --cpu 0.5 --memory 1.0Gi \
               --min-replicas 1 --max-replicas 3
           fi

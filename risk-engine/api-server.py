@@ -122,8 +122,9 @@ def require_jwt(required_role=None):
                     return jsonify({"error": "Invalid token tenant"}), 401
                 
                 expected_audiences = [AZURE_AD_CLIENT_ID, f"api://{AZURE_AD_CLIENT_ID}"]
-                if AZURE_AD_CLIENT_ID and decoded.get('aud') not in expected_audiences:
-                    SecureLogger.warning(f"Invalid audience in token from {request.remote_addr}")
+                token_aud = decoded.get('aud')
+                if AZURE_AD_CLIENT_ID and token_aud not in expected_audiences:
+                    SecureLogger.warning(f"Invalid audience '{token_aud}' (expected one of {expected_audiences}) from {request.remote_addr}")
                     return jsonify({"error": "Invalid token audience"}), 401
                 
                 # Check role if required
