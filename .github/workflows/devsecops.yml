@@ -69,29 +69,33 @@ jobs:
           
           # Check for actual app code (excluding risk-engine and .github)
           if [ -d "src" ] || [ -d "App" ] || [ -f "app.py" ] || [ -f "index.js" ] || \
-             [ -f "Program.cs" ] || find . -maxdepth 3 -name "Program.cs" \
+             [ -f "Program.cs" ] || find . -name "Program.cs" \
              -not -path "*/risk-engine/*" -not -path "*/.github/*" 2>/dev/null | grep -q .; then
             HAS_APP=true
           fi
           
-          # Detect .NET (check root and subdirectories, exclude risk-engine)
-          if find . -maxdepth 3 -name "*.csproj" \
+          # Detect .NET (check anywhere except risk-engine)
+          echo "=== Searching for .NET projects ==="
+          find . -name "*.csproj" -not -path "*/risk-engine/*" -not -path "*/.github/*" 2>/dev/null || true
+          
+          if find . -name "*.csproj" \
              -not -path "*/risk-engine/*" \
-             -not -path "*/.github/*" 2>/dev/null | grep -q .; then
+             -not -path "*/.github/*" \
+             -not -path "*/obj/*" \
+             -not -path "*/bin/*" 2>/dev/null | grep -q .; then
             TYPES+=("dotnet")
-            echo "Found .NET project files:"
-            find . -maxdepth 3 -name "*.csproj" -not -path "*/risk-engine/*" -not -path "*/.github/*"
+            echo "✓ .NET project detected"
           fi
           
           # Detect Java
-          if [ -f "pom.xml" ] || find . -maxdepth 3 -name "build.gradle" \
+          if [ -f "pom.xml" ] || find . -name "build.gradle" \
              -not -path "*/risk-engine/*" -not -path "*/.github/*" 2>/dev/null | grep -q .; then
             TYPES+=("java")
           fi
           
           # Detect Python (require requirements.txt for app detection)
           if ([ -f "requirements.txt" ] || [ -f "src/requirements.txt" ] || [ -f "app/requirements.txt" ]) && \
-             find . -maxdepth 3 -name "*.py" -not -path "*/risk-engine/*" -not -path "*/.github/*" 2>/dev/null | grep -q .; then
+             find . -name "*.py" -not -path "*/risk-engine/*" -not -path "*/.github/*" 2>/dev/null | grep -q .; then
             TYPES+=("python")
           fi
           

@@ -1825,7 +1825,7 @@ async function getAccessToken() {{
   }}
 }}
 
-async function resolveIssue(issueKey, transition, event) {{
+function resolveIssue(issueKey, transition, event) {{
   event.stopPropagation();
 
   var label = TRANSITION_LABELS[transition] || transition;
@@ -1855,68 +1855,60 @@ async function resolveIssue(issueKey, transition, event) {{
     return;
   }}
 
-  try {{
-    var token = await getAccessToken();
-    
-    var controller = new AbortController();
-    var timeoutId = setTimeout(function() {{ controller.abort(); }}, 30000);
-    
-    var response = await fetch(API_ENDPOINT.replace(/\\/+$/, '') + '/api/resolve-issue', {{
-      method: 'POST',
-      headers: {{
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/json'
-      }},
-      body: JSON.stringify({{
-        issue_key: issueKey,
-        transition: transition,
-        comment: 'Resolved via DevSecOps Dashboard on ' + new Date().toISOString()
-      }}),
-      signal: controller.signal
-    }});
-    
-    clearTimeout(timeoutId);
-
-    var result = {{}};
-    try {{
-      result = await response.json();
-    }} catch (parseError) {{
-      result = {{}};
-    }}
-
-    if (!response.ok) {{
-      throw new Error(result.error || 'Failed to resolve issue');
-    }}
-
-    alert('✓ Issue marked as ' + label + ' successfully!\\n\\nRefresh the page to see updated status.');
-    setTimeout(function() {{
-      window.location.reload();
-    }}, 1500);
-  }} catch (error) {{
-    var errorMsg = '✗ Failed to resolve issue\\n\\n';
-    
-    if (error.name === 'AbortError') {{
-      errorMsg += 'Error: Request timeout (30s)\\n\\n';
-    }} else {{
+  getAccessToken()
+    .then(function(token) {{
+      console.log('Got token, calling API:', API_ENDPOINT);
+      
+      return fetch(API_ENDPOINT.replace(/\\/+$/, '') + '/api/resolve-issue', {{
+        method: 'POST',
+        headers: {{
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        }},
+        body: JSON.stringify({{
+          issue_key: issueKey,
+          transition: transition,
+          comment: 'Resolved via DevSecOps Dashboard on ' + new Date().toISOString()
+        }})
+      }});
+    }})
+    .then(function(response) {{
+      console.log('API response status:', response.status);
+      
+      if (!response.ok) {{
+        return response.json().then(function(err) {{
+          throw new Error(err.error || 'Failed to resolve issue');
+        }}).catch(function() {{
+          throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+        }});
+      }}
+      
+      return response.json();
+    }})
+    .then(function(result) {{
+      alert('✓ Issue marked as ' + label + ' successfully!\\n\\nRefresh the page to see updated status.');
+      setTimeout(function() {{
+        window.location.reload();
+      }}, 1500);
+    }})
+    .catch(function(error) {{
+      var errorMsg = '✗ Failed to resolve issue\\n\\n';
       errorMsg += 'Error: ' + error.message + '\\n\\n';
-    }}
-    
-    errorMsg += 'Troubleshooting:\\n';
-    errorMsg += '1. Check API endpoint: ' + API_ENDPOINT + '\\n';
-    errorMsg += '2. Verify Azure AD authentication\\n';
-    errorMsg += '3. Check browser console for details\\n\\n';
-    errorMsg += 'Or resolve manually in SonarCloud.';
-    
-    alert(errorMsg);
-    console.error('Resolve error:', error);
-    console.error('API Endpoint:', API_ENDPOINT);
-    console.error('Response status:', error.response ? error.response.status : 'No response');
+      errorMsg += 'Troubleshooting:\\n';
+      errorMsg += '1. API: ' + API_ENDPOINT + '\\n';
+      errorMsg += '2. Check browser console\\n';
+      errorMsg += '3. Verify Azure AD auth\\n\\n';
+      errorMsg += 'Or resolve manually in SonarCloud.';
+      
+      alert(errorMsg);
+      console.error('Resolve error:', error);
+      console.error('API Endpoint:', API_ENDPOINT);
 
-    if (btn) {{
-      btn.disabled = false;
-      btn.innerHTML = originalHTML;
-    }}
-  }}
+      if (btn) {{
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }}
+    }});
 }}
  
 /* ══════════════════════════════════════════════════════
@@ -2102,36 +2094,46 @@ function rebuildChart(theme) {{
 }}
  
 // Initialize charts when DOM and Chart.js are ready
-window.addEventListener('load', function() {{
-  var MAX_WAIT_MS = 10000;
-  var start = Date.now();
-  var theme = window.__dsoInitialTheme || 'dark';
+if (window.addEventListener) {{
+  window.addEventListener('load', function() {{
+    var MAX_WAIT_MS = 10000;
+    var start = Date.now();
+    var theme = window.__dsoInitialTheme || 'dark';
 
-  function attempt() {{
-    if (typeof Chart !== 'undefined') {{
-      try {{
-        buildChart(theme);
-        buildLangChart();
-        console.log('Charts initialized');
-      }} catch(e) {{
-        console.error('Chart init error:', e);
+    function attempt() {{
+      if (typeof Chart !== 'undefined') {{
+        try {{
+          buildChart(theme);
+          buildLangChart();
+          console.log('Charts initialized');
+        }} catch(e) {{
+          console.error('Chart init error:', e);
+        }}
+        return;
       }}
-      return;
-    }}
-    if (Date.now() - start > MAX_WAIT_MS) {{
-      var wrap = document.querySelector('.chart-wrap');
-      if (wrap) {{
-        wrap.innerHTML =
-          '<div class="chart-error">Chart.js failed to load — ' +
-          'check network or Content-Security-Policy settings.</div>';
+      if (Date.now() - start > MAX_WAIT_MS) {{
+        var wrap = document.querySelector('.chart-wrap');
+        if (wrap) {{
+          wrap.innerHTML =
+            '<div class="chart-error">Chart.js failed to load — ' +
+            'check network or Content-Security-Policy settings.</div>';
+        }}
+        return;
       }}
-      return;
+      setTimeout(attempt, 150);
     }}
-    setTimeout(attempt, 150);
-  }}
  
-  attempt();
-}})();
+    attempt();
+  }});
+}} else {{
+  setTimeout(function() {{
+    var theme = window.__dsoInitialTheme || 'dark';
+    if (typeof Chart !== 'undefined') {{
+      buildChart(theme);
+      buildLangChart();
+    }}
+  }}, 1000);
+}}
 </script>
 </body>
 </html>"""
