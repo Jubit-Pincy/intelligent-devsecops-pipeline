@@ -200,7 +200,7 @@ def resolve_issue():
             return jsonify({"error": "issue_key is required"}), 400
         
         # Valid transitions in SonarCloud
-        valid_transitions = ['wontfix', 'falsepositive', 'resolve', 'confirm', 'unconfirm']
+        valid_transitions = ['wontfix', 'falsepositive', 'resolve', 'confirm', 'unconfirm', 'reopen']
         if transition not in valid_transitions:
             return jsonify({
                 "error": f"Invalid transition. Must be one of: {', '.join(valid_transitions)}"
