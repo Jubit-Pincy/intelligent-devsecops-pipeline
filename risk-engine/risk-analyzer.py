@@ -1976,6 +1976,8 @@ function resolveIssue(issueKey, transition, event) {{
           errToast.innerHTML = '<i class="fas fa-circle-xmark"></i> Undo failed: ' + err.message;
           document.body.appendChild(errToast);
           setTimeout(function() {{ errToast.remove(); }}, 4000);
+        }});
+    }})
     }})
     .catch(function(error) {{
       var errorMsg = '✗ Failed to resolve issue\\n\\n';
