@@ -229,6 +229,7 @@ jobs:
           API_ENDPOINT: __API_ENDPOINT__
           AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || '__AZURE_AD_CLIENT_ID__' }}
           AZURE_AD_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || '__AZURE_AD_TENANT_ID__' }}
+          AZURE_AD_DASHBOARD_CLIENT_ID: ${{ secrets.AZURE_DASHBOARD_CLIENT_ID }}
 
         run: |
           mkdir -p reports

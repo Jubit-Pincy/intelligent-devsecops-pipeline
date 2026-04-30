@@ -35,6 +35,7 @@ GITHUB_RUN_URL = os.getenv("GITHUB_RUN_URL", "#")
 API_ENDPOINT   = os.getenv("API_ENDPOINT", "")
 AZURE_AD_CLIENT_ID = os.getenv("AZURE_AD_CLIENT_ID", "__AZURE_AD_CLIENT_ID__")
 AZURE_AD_TENANT_ID = os.getenv("AZURE_AD_TENANT_ID", "__AZURE_AD_TENANT_ID__")
+AZURE_AD_DASHBOARD_CLIENT_ID = os.getenv("AZURE_AD_DASHBOARD_CLIENT_ID", AZURE_AD_CLIENT_ID)
 
  
 _raw_types = os.getenv("DETECTED_TYPES", '["unknown"]')
@@ -579,7 +580,7 @@ h_scores = json.dumps([e["risk_score"] for e in history])
 h_levels = json.dumps([e.get("level","") for e in history])
 lang_chart_data = json.dumps(language_data)
 api_endpoint_js = json.dumps(API_ENDPOINT or "__API_ENDPOINT__")
-azure_ad_client_id_js = json.dumps(AZURE_AD_CLIENT_ID)
+azure_ad_client_id_js = json.dumps(AZURE_AD_DASHBOARD_CLIENT_ID)
 azure_ad_tenant_id_js = json.dumps(AZURE_AD_TENANT_ID)
 
  
@@ -1790,7 +1791,7 @@ async function getMsalInstance() {{
 
 async function getAccessToken() {{
   var tokenRequest = {{
-    scopes: ['api://' + AZURE_AD_CLIENT_ID + '/.default']
+    scopes: [ AZURE_AD_CLIENT_ID + '/.default']
   }};
   var instance = await getMsalInstance();
   var accounts = typeof instance.getAllAccounts === 'function' ? instance.getAllAccounts() : [];
