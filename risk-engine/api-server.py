@@ -87,6 +87,7 @@ SONAR_URL = os.getenv("SONAR_URL", "https://sonarcloud.io")
 PROJECT_KEY = os.getenv("PROJECT_KEY", "")
 AZURE_AD_TENANT_ID = os.getenv("AZURE_AD_TENANT_ID", "")
 AZURE_AD_CLIENT_ID = os.getenv("AZURE_AD_CLIENT_ID", "")
+AZURE_AD_DASHBOARD_CLIENT_ID = os.getenv("AZURE_AD_DASHBOARD_CLIENT_ID", AZURE_AD_CLIENT_ID) 
 
 if not SONAR_TOKEN:
     SecureLogger.error("SONAR_TOKEN not set - API will not work")
@@ -121,9 +122,15 @@ def require_jwt(required_role=None):
                     SecureLogger.warning(f"Invalid tenant ID in token from {request.remote_addr}")
                     return jsonify({"error": "Invalid token tenant"}), 401
                 
-                expected_audiences = [AZURE_AD_CLIENT_ID, f"api://{AZURE_AD_CLIENT_ID}"]
                 token_aud = decoded.get('aud')
-                if AZURE_AD_CLIENT_ID and token_aud not in expected_audiences:
+                aud_list = token_aud if isinstance(token_aud, list) else [token_aud]
+                expected_audiences = [
+                    AZURE_AD_CLIENT_ID,
+                    f"api://{AZURE_AD_CLIENT_ID}",
+                    AZURE_AD_DASHBOARD_CLIENT_ID,
+                    f"api://{AZURE_AD_DASHBOARD_CLIENT_ID}",
+                ]
+                if AZURE_AD_CLIENT_ID and not any(a in expected_audiences for a in aud_list):
                     SecureLogger.warning(f"Invalid audience '{token_aud}' (expected one of {expected_audiences}) from {request.remote_addr}")
                     return jsonify({"error": "Invalid token audience"}), 401
                 
