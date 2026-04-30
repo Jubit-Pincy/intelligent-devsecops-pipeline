@@ -581,6 +581,7 @@ h_levels = json.dumps([e.get("level","") for e in history])
 lang_chart_data = json.dumps(language_data)
 api_endpoint_js = json.dumps(API_ENDPOINT or "__API_ENDPOINT__")
 azure_ad_client_id_js = json.dumps(AZURE_AD_DASHBOARD_CLIENT_ID)
+azure_ad_api_client_id_js = json.dumps(AZURE_AD_CLIENT_ID)
 azure_ad_tenant_id_js = json.dumps(AZURE_AD_TENANT_ID)
 
  
@@ -1677,6 +1678,7 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
 var API_ENDPOINT = {api_endpoint_js};
 var AZURE_AD_CLIENT_ID = {azure_ad_client_id_js};
+var AZURE_AD_API_CLIENT_ID = {azure_ad_api_client_id_js};
 var AZURE_AD_TENANT_ID = {azure_ad_tenant_id_js};
  
 function resolveTheme(pref) {{
@@ -1791,7 +1793,7 @@ async function getMsalInstance() {{
 
 async function getAccessToken() {{
   var tokenRequest = {{
-    scopes: [ AZURE_AD_CLIENT_ID + '/.default']
+    scopes: ['api://' + AZURE_AD_API_CLIENT_ID + '/.default']
   }};
   var instance = await getMsalInstance();
   var accounts = typeof instance.getAllAccounts === 'function' ? instance.getAllAccounts() : [];
