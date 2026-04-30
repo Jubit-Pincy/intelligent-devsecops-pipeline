@@ -67,31 +67,40 @@ jobs:
           TYPES=()
           HAS_APP=false
           
-          # Check for actual app code
+          # Check for actual app code (excluding risk-engine and .github)
           if [ -d "src" ] || [ -d "App" ] || [ -f "app.py" ] || [ -f "index.js" ] || \
-             [ -f "Program.cs" ] || find . -name "Program.cs" -not -path "./.github/*" 2>/dev/null | grep -q .; then
+             [ -f "Program.cs" ] || find . -maxdepth 3 -name "Program.cs" \
+             -not -path "*/risk-engine/*" -not -path "*/.github/*" 2>/dev/null | grep -q .; then
             HAS_APP=true
           fi
           
-          # Detect languages (exclude risk-engine)
-          if find . -name "*.csproj" -not -path "./risk-engine/*" -not -path "./.github/*" 2>/dev/null | grep -q .; then
+          # Detect .NET (check root and subdirectories, exclude risk-engine)
+          if find . -maxdepth 3 -name "*.csproj" \
+             -not -path "*/risk-engine/*" \
+             -not -path "*/.github/*" 2>/dev/null | grep -q .; then
             TYPES+=("dotnet")
+            echo "Found .NET project files:"
+            find . -maxdepth 3 -name "*.csproj" -not -path "*/risk-engine/*" -not -path "*/.github/*"
           fi
           
-          if [ -f "pom.xml" ] || find . -name "build.gradle" -not -path "./risk-engine/*" -not -path "./.github/*" 2>/dev/null | grep -q .; then
+          # Detect Java
+          if [ -f "pom.xml" ] || find . -maxdepth 3 -name "build.gradle" \
+             -not -path "*/risk-engine/*" -not -path "*/.github/*" 2>/dev/null | grep -q .; then
             TYPES+=("java")
           fi
           
-          if find . -name "*.py" -not -path "./risk-engine/*" -not -path "./.github/*" 2>/dev/null | grep -q .; then
-            if [ -f "requirements.txt" ] || [ -f "src/requirements.txt" ]; then
-              TYPES+=("python")
-            fi
+          # Detect Python (require requirements.txt for app detection)
+          if ([ -f "requirements.txt" ] || [ -f "src/requirements.txt" ] || [ -f "app/requirements.txt" ]) && \
+             find . -maxdepth 3 -name "*.py" -not -path "*/risk-engine/*" -not -path "*/.github/*" 2>/dev/null | grep -q .; then
+            TYPES+=("python")
           fi
           
+          # Detect Node.js
           if [ -f "package.json" ]; then
             TYPES+=("node")
           fi
           
+          # Detect Go
           if [ -f "go.mod" ]; then
             TYPES+=("go")
           fi

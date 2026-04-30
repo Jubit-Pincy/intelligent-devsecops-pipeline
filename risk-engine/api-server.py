@@ -163,7 +163,11 @@ def health():
 
 @app.route('/api/resolve-issue', methods=['OPTIONS'])
 def resolve_issue_preflight():
-    return '', 204
+    response = jsonify({"status": "ok"})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Authorization, Content-Type")
+    response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+    return response, 200
 @app.route('/api/resolve-issue', methods=['POST'])
 @require_jwt(required_role='Contributor')
 def resolve_issue():

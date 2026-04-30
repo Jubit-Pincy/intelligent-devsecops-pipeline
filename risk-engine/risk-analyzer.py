@@ -1857,6 +1857,10 @@ async function resolveIssue(issueKey, transition, event) {{
 
   try {{
     var token = await getAccessToken();
+    
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function() {{ controller.abort(); }}, 30000);
+    
     var response = await fetch(API_ENDPOINT.replace(/\\/+$/, '') + '/api/resolve-issue', {{
       method: 'POST',
       headers: {{
@@ -1867,8 +1871,11 @@ async function resolveIssue(issueKey, transition, event) {{
         issue_key: issueKey,
         transition: transition,
         comment: 'Resolved via DevSecOps Dashboard on ' + new Date().toISOString()
-      }})
+      }}),
+      signal: controller.signal
     }});
+    
+    clearTimeout(timeoutId);
 
     var result = {{}};
     try {{
@@ -1886,10 +1893,24 @@ async function resolveIssue(issueKey, transition, event) {{
       window.location.reload();
     }}, 1500);
   }} catch (error) {{
-    alert('✗ Failed to resolve issue\\n\\n' +
-          'Error: ' + error.message + '\\n\\n' +
-          'Please try again or resolve manually in SonarCloud.');
+    var errorMsg = '✗ Failed to resolve issue\\n\\n';
+    
+    if (error.name === 'AbortError') {{
+      errorMsg += 'Error: Request timeout (30s)\\n\\n';
+    }} else {{
+      errorMsg += 'Error: ' + error.message + '\\n\\n';
+    }}
+    
+    errorMsg += 'Troubleshooting:\\n';
+    errorMsg += '1. Check API endpoint: ' + API_ENDPOINT + '\\n';
+    errorMsg += '2. Verify Azure AD authentication\\n';
+    errorMsg += '3. Check browser console for details\\n\\n';
+    errorMsg += 'Or resolve manually in SonarCloud.';
+    
+    alert(errorMsg);
     console.error('Resolve error:', error);
+    console.error('API Endpoint:', API_ENDPOINT);
+    console.error('Response status:', error.response ? error.response.status : 'No response');
 
     if (btn) {{
       btn.disabled = false;
@@ -2056,21 +2077,21 @@ function buildChart(theme) {{
           }}
         }}
       }},
-      scales: {{
-        x: {{
-          ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
-          grid:  {{ color: gridCol }},
-          border: {{ color: gridCol }}
-        }},
-        y: {{
-            beginAtZero: true,
-            max: 100,
-            ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
-            grid:  {{ color: gridCol }},
-            border: {{ color: gridCol }}
+    scales: {{
+            x: {{
+              ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
+              grid:  {{ color: gridCol }},
+              border: {{ color: gridCol }}
+            }},
+            y: {{
+              beginAtZero: true,
+              max: 100,
+              ticks: {{ color: tickCol, font: {{ family: "'IBM Plex Mono'", size: 10 }} }},
+              grid:  {{ color: gridCol }},
+              border: {{ color: gridCol }}
+            }}
+          }}
         }}
-      }}
-    }}
   }});
 }}
  
