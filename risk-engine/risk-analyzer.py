@@ -1914,14 +1914,13 @@ function resolveIssue(issueKey, transition, event) {{
         if (resolveActions) resolveActions.remove();
       }}
       
-      // Show success toast with undo
+      // Show success toast instead of alert
       var toast = document.createElement('div');
-      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--low-fg);color:var(--low-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;';
-      toast.innerHTML = '<i class="fas fa-circle-check"></i> Issue marked as ' + label +
-        '<button id="undoBtn" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:3px;font-family:var(--mono);font-size:11px;cursor:pointer;margin-left:8px;">' +
+      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--low-fg);color:var(--low-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);';
+      toast.innerHTML = '<i class="fas fa-circle-check"></i> Issue marked as ' + label + '<button id="undoBtn" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:3px;font-family:var(--mono);font-size:11px;cursor:pointer;margin-left:8px;">' +
         '<i class="fas fa-rotate-left"></i> Undo</button>';
       document.body.appendChild(toast);
-      
+
       var undoTimeout = setTimeout(function() {{ toast.remove(); }}, 8000);
       
       document.getElementById('undoBtn').addEventListener('click', function() {{
