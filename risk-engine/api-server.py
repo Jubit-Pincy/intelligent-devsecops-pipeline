@@ -144,7 +144,7 @@ def require_jwt(required_role=None):
                     }), 403
                 
                 # Store user context for logging
-                g.user = decoded.get('preferred_username', 'unknown')
+                g.user = decoded.get('preferred_username') or decoded.get('email') or decoded.get('upn', 'unknown')
                 g.user_id = decoded.get('oid', 'unknown')
                 
             except jwt.ExpiredSignatureError:
@@ -219,15 +219,21 @@ def resolve_issue():
         }
         
         response = requests.post(endpoint, params=params, auth=AUTH, timeout=15)
-        
+
         if response.status_code != 200:
+            # SonarCloud 400 on already-resolved issue
+            if response.status_code == 400:
+                return jsonify({
+                    "error": "Issue cannot be transitioned — it may already be resolved",
+                    "details": response.text
+                }), 400
             SecureLogger.error(f"SonarCloud API error: {response.status_code}")
             return jsonify({
                 "error": "Failed to resolve issue in SonarCloud",
                 "details": response.text,
                 "status_code": response.status_code
             }), response.status_code
-        
+
         # Step 2: Add comment if provided
         if comment:
             comment_endpoint = f"{SONAR_URL}/api/issues/add_comment"
