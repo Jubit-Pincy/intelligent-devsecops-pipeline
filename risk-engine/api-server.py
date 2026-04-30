@@ -210,7 +210,7 @@ def resolve_issue():
             "transition": transition
         }
         
-        response = requests.post(endpoint, params=params, auth=AUTH, timeout=30)
+        response = requests.post(endpoint, params=params, auth=AUTH, timeout=15)
         
         if response.status_code != 200:
             SecureLogger.error(f"SonarCloud API error: {response.status_code}")
@@ -231,7 +231,7 @@ def resolve_issue():
                 comment_endpoint, 
                 params=comment_params, 
                 auth=AUTH, 
-                timeout=30
+                timeout=15
             )
             
             if comment_response.status_code != 200:

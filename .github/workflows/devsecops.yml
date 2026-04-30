@@ -435,6 +435,7 @@ jobs:
               --name $API_NAME \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --image $IMAGE \
+              --min-replicas 1 \
               --set-env-vars \
                 SONAR_URL=${{ env.SONAR_URL }} \
                 PROJECT_KEY=${{ needs.detect.outputs.project_key }} \
@@ -462,6 +463,13 @@ jobs:
               --min-replicas 1 --max-replicas 3
           fi
           
+          echo "Setting ingress timeout..."
+          az containerapp ingress update \
+            --name $API_NAME \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --transport http \
+            --timeout 120
+
           # Configure CORS
           echo "Configuring CORS..."
           az containerapp ingress cors enable \
