@@ -55,7 +55,16 @@ class SecureLogger:
         logger.warning(sanitize_log(str(msg)))
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [
+            "https://jubit-pincy.github.io",
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Authorization", "Content-Type"],
+        "supports_credentials": False
+    }
+})
 
 # Azure Key Vault setup
 VAULT_URL = os.getenv("VAULT_URL", "")
@@ -152,6 +161,9 @@ def health():
     """Health check endpoint - no auth required"""
     return jsonify({"status": "healthy", "service": "devsecops-api"}), 200
 
+@app.route('/api/resolve-issue', methods=['OPTIONS'])
+def resolve_issue_preflight():
+    return '', 204
 @app.route('/api/resolve-issue', methods=['POST'])
 @require_jwt(required_role='Contributor')
 def resolve_issue():
