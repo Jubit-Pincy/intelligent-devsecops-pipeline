@@ -113,7 +113,8 @@ def require_jwt(required_role=None):
                     SecureLogger.warning(f"Invalid tenant ID in token from {request.remote_addr}")
                     return jsonify({"error": "Invalid token tenant"}), 401
                 
-                if AZURE_AD_CLIENT_ID and decoded.get('aud') != AZURE_AD_CLIENT_ID:
+                expected_audiences = [AZURE_AD_CLIENT_ID, f"api://{AZURE_AD_CLIENT_ID}"]
+                if AZURE_AD_CLIENT_ID and decoded.get('aud') not in expected_audiences:
                     SecureLogger.warning(f"Invalid audience in token from {request.remote_addr}")
                     return jsonify({"error": "Invalid token audience"}), 401
                 
