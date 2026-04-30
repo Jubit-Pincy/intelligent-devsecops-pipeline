@@ -414,10 +414,10 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build \
-            -f Dockerfile \
+            -f risk-engine/Dockerfile \
             -t ${ACR_SERVER}/devsecops-api:${IMAGE_TAG} \
             -t ${ACR_SERVER}/devsecops-api:latest \
-            .
+            ./risk-engine
           
           docker push ${ACR_SERVER}/devsecops-api:${IMAGE_TAG}
           docker push ${ACR_SERVER}/devsecops-api:latest
