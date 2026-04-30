@@ -55,16 +55,15 @@ class SecureLogger:
         logger.warning(sanitize_log(str(msg)))
 
 app = Flask(__name__)
-CORS(app, resources={
-    r"/api/*": {
-        "origins": [
-            "https://jubit-pincy.github.io",
-        ],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Authorization", "Content-Type"],
-        "supports_credentials": False
-    }
-})
+
+# Enable CORS for all routes
+CORS(app, 
+     origins=["https://jubit-pincy.github.io", "http://localhost:*"],
+     methods=["GET", "POST", "OPTIONS"],
+     allow_headers=["Authorization", "Content-Type", "Accept"],
+     expose_headers=["Content-Type"],
+     supports_credentials=False,
+     max_age=3600)
 
 # Azure Key Vault setup
 VAULT_URL = os.getenv("VAULT_URL", "")
@@ -163,11 +162,8 @@ def health():
 
 @app.route('/api/resolve-issue', methods=['OPTIONS'])
 def resolve_issue_preflight():
-    response = jsonify({"status": "ok"})
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Headers", "Authorization, Content-Type")
-    response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
-    return response, 200
+    """Handle CORS preflight"""
+    return '', 204
 @app.route('/api/resolve-issue', methods=['POST'])
 @require_jwt(required_role='Contributor')
 def resolve_issue():
@@ -318,6 +314,20 @@ def log_request():
     SecureLogger.info(
         f"{request.method} {request.path} from {request.remote_addr}"
     )
+
+@app.after_request
+def after_request(response):
+    """Add CORS headers to all responses"""
+    origin = request.headers.get('Origin')
+    if origin and origin.startswith('https://jubit-pincy.github.io'):
+        response.headers['Access-Control-Allow-Origin'] = origin
+    elif origin and origin.startswith('http://localhost'):
+        response.headers['Access-Control-Allow-Origin'] = origin
+    
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type, Accept'
+    response.headers['Access-Control-Max-Age'] = '3600'
+    return response
 
 if __name__ == '__main__':
     port = int(os.getenv('API_PORT', 5000))

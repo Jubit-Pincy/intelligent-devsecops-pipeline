@@ -439,13 +439,7 @@ jobs:
                 SONAR_URL=${{ env.SONAR_URL }} \
                 PROJECT_KEY=${{ needs.detect.outputs.project_key }} \
                 AZURE_AD_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
-                AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
-                az containerapp ingress cors enable \
-                  --name $API_NAME \
-                  --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-                  --allowed-origins "https://jubit-pincy.github.io" \
-                  --allowed-methods "GET,POST,OPTIONS" \
-                  --allowed-headers "Authorization,Content-Type"
+                AZURE_AD_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}
           else
             echo "Creating container app..."
             az containerapp create \
@@ -468,6 +462,16 @@ jobs:
               --min-replicas 1 --max-replicas 3
           fi
           
+          # Configure CORS
+          echo "Configuring CORS..."
+          az containerapp ingress cors enable \
+            --name $API_NAME \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --allowed-origins "https://jubit-pincy.github.io" \
+            --allowed-methods "GET" "POST" "OPTIONS" \
+            --allowed-headers "Authorization" "Content-Type" "Accept" \
+            --max-age 3600
+          
           URL=$(az containerapp show \
             --name $API_NAME \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
@@ -475,17 +479,6 @@ jobs:
           
           echo "url=https://$URL" >> "$GITHUB_OUTPUT"
           echo "✅ DevSecOps API deployed: https://$URL"
-
-      - name: Configure CORS on Container App
-        env:
-          API_NAME: ${{ secrets.AZURE_API_NAME }}
-        run: |
-          az containerapp ingress cors enable \
-            --name $API_NAME \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --allowed-origins "https://jubit-pincy.github.io" \
-            --allowed-methods "GET,POST,OPTIONS" \
-            --allowed-headers "Authorization,Content-Type"
 
   # ═══════════════════════════════════════════════════════════════
   # JOB 7: Deploy Application (BLOCKED on HIGH risk)
