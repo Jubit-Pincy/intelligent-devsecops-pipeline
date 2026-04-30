@@ -57,7 +57,7 @@ jobs:
           echo "=== requirements.txt exists? ==="
           ls requirements*.txt 2>/dev/null || echo "none found"
 
-          
+
       - name: Detect project type
         id: detect
         run: |
@@ -236,7 +236,7 @@ jobs:
           WEIGHT_HOTSPOTS: ${{ env.WEIGHT_HOTSPOTS }}
           DETECTED_TYPES: ${{ needs.detect.outputs.types_json }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          API_ENDPOINT: __API_ENDPOINT__
+          API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
           AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || '__AZURE_AD_CLIENT_ID__' }}
           AZURE_AD_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || '__AZURE_AD_TENANT_ID__' }}
           AZURE_AD_DASHBOARD_CLIENT_ID: ${{ secrets.AZURE_DASHBOARD_CLIENT_ID }}
@@ -265,7 +265,7 @@ jobs:
         run: |
           for file in reports/security-report.html; do
             [ -f "$file" ] || continue
-            sed -i "s|__API_ENDPOINT__|${PUBLISHED_API_URL}|g" "$file"
+            sed -i "s|${{ secrets.API_ENDPOINT }}|${PUBLISHED_API_URL}|g" "$file"
             sed -i "s|__AZURE_AD_CLIENT_ID__|${AZURE_AD_CLIENT_ID}|g" "$file"
             sed -i "s|__AZURE_AD_TENANT_ID__|${AZURE_AD_TENANT_ID}|g" "$file"
           done
@@ -342,7 +342,7 @@ jobs:
         run: |
           for file in public/index.html public/security-report.html; do
             [ -f "$file" ] || continue
-            sed -i "s|__API_ENDPOINT__|${PUBLISHED_API_URL}|g" "$file"
+            sed -i "s|${{ secrets.API_ENDPOINT }}|${PUBLISHED_API_URL}|g" "$file"
             sed -i "s|__AZURE_AD_CLIENT_ID__|${AZURE_AD_CLIENT_ID}|g" "$file"
             sed -i "s|__AZURE_AD_TENANT_ID__|${AZURE_AD_TENANT_ID}|g" "$file"
           done
