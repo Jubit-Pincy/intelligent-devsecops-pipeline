@@ -286,6 +286,11 @@ jobs:
           mv history.json reports/history.json || \
           echo "No history yet — starting fresh"
       
+      - name: Wait for SonarCloud processing
+        run: |
+          echo "Waiting for SonarCloud to process scan results..."
+          sleep 90
+
       - name: Run Risk Analyzer
         id: risk
         continue-on-error: true

@@ -224,11 +224,11 @@ print("Fetching individual issue details …")
 OPEN_STATUSES   = "OPEN,CONFIRMED,REOPENED"
 CLOSED_STATUSES = "RESOLVED,CLOSED"
  
-bug_issues        = fetch_issues("BUG",           ps=10, statuses=OPEN_STATUSES)
-bug_issues_closed = fetch_issues("BUG",           ps=10, statuses=CLOSED_STATUSES)
-vuln_issues        = fetch_issues("VULNERABILITY", ps=10, statuses=OPEN_STATUSES)
-vuln_issues_closed = fetch_issues("VULNERABILITY", ps=10, statuses=CLOSED_STATUSES)
-hotspot_list = fetch_hotspots(ps=10)
+bug_issues        = fetch_issues("BUG",           ps=500, statuses=OPEN_STATUSES)
+bug_issues_closed = fetch_issues("BUG",           ps=500, statuses=CLOSED_STATUSES)
+vuln_issues        = fetch_issues("VULNERABILITY", ps=500, statuses=OPEN_STATUSES)
+vuln_issues_closed = fetch_issues("VULNERABILITY", ps=500, statuses=CLOSED_STATUSES)
+hotspot_list = fetch_hotspots(ps=500)
  
 # ─────────────────────────────────────────────────
 # Risk scoring
@@ -519,29 +519,64 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
         <th></th>
       </tr>
     </thead>"""
- 
+
     if not rows_html and not closed_rows_html:
         return f'<p class="empty-msg">No {empty_label} detected — great work!</p>'
- 
+
+    table_id = empty_label.replace(" ", "-")
+
     open_block = ""
     if rows_html:
+        rows_json = json.dumps([r for r in rows_html])
         open_block = f"""
-<div class="table-wrap">
+<div class="table-wrap" id="wrap-{table_id}">
   <table class="issue-table">
     {thead}
-    <tbody>{"".join(rows_html)}</tbody>
+    <tbody id="tbody-{table_id}"></tbody>
   </table>
+  <div class="pagination-bar" id="pager-{table_id}"></div>
   <p class="table-note">
     <i class="fas fa-circle-info"></i>
-    Click a row to expand remediation guidance. File links open directly in SonarCloud.
+    Click a row to expand remediation guidance.
   </p>
-</div>"""
+</div>
+<script>
+(function(){{
+  var rows = {rows_json};
+  var PAGE = 10, cur = 0;
+  var tbody = document.getElementById('tbody-{table_id}');
+  var pager = document.getElementById('pager-{table_id}');
+  function render() {{
+    tbody.innerHTML = rows.slice(cur * PAGE, (cur + 1) * PAGE).join('');
+    var total = Math.ceil(rows.length / PAGE);
+    pager.innerHTML = total <= 1 ? '' :
+      '<div class="pager">' +
+      '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)-1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===0?'disabled':'') + '><i class="fas fa-chevron-left"></i></button>' +
+      '<span>Page ' + (cur+1) + ' of ' + total + '</span>' +
+      '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)+1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===total-1?'disabled':'') + '><i class="fas fa-chevron-right"></i></button>' +
+      '</div>';
+  }}
+  render();
+  var sentinel = document.createElement('span');
+  sentinel.id = 'pg-{table_id}';
+  sentinel.style.display = 'none';
+  pager.appendChild(sentinel);
+  sentinel.addEventListener('pg', function(){{
+    var total = Math.ceil(rows.length / PAGE);
+    cur = Math.max(0, Math.min(this.__pg, total-1));
+    render();
+    document.getElementById('wrap-{table_id}').scrollIntoView({{behavior:'smooth',block:'nearest'}});
+  }});
+}})();
+</script>"""
     else:
         open_block = f'<p class="empty-msg">No open {empty_label} — great work!</p>'
- 
+
     closed_block = ""
     if closed_rows_html:
         n = len(closed_rows_html)
+        rows_json = json.dumps([r for r in closed_rows_html])
+        cid = table_id + "-closed"
         closed_block = f"""
 <details class="closed-section">
   <summary class="closed-summary">
@@ -549,18 +584,43 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
     <span>Closed / Resolved {empty_label.title()}</span>
     <span class="closed-count">{n}</span>
   </summary>
-  <div class="table-wrap closed-table-wrap">
+  <div class="table-wrap closed-table-wrap" id="wrap-{cid}">
     <table class="issue-table">
       {thead}
-      <tbody>{"".join(closed_rows_html)}</tbody>
+      <tbody id="tbody-{cid}"></tbody>
     </table>
-    <p class="table-note">
-      <i class="fas fa-circle-info"></i>
-      These issues were resolved in SonarCloud. Links open the issue record directly.
-    </p>
+    <div class="pagination-bar" id="pager-{cid}"></div>
   </div>
+  <script>
+  (function(){{
+    var rows = {rows_json};
+    var PAGE = 10, cur = 0;
+    var tbody = document.getElementById('tbody-{cid}');
+    var pager = document.getElementById('pager-{cid}');
+    function render() {{
+      tbody.innerHTML = rows.slice(cur * PAGE, (cur + 1) * PAGE).join('');
+      var total = Math.ceil(rows.length / PAGE);
+      pager.innerHTML = total <= 1 ? '' :
+        '<div class="pager">' +
+        '<button onclick="(function(){{var s=document.getElementById(\\'pg-{cid}\\');s.__pg=(s.__pg||0)-1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===0?'disabled':'') + '><i class="fas fa-chevron-left"></i></button>' +
+        '<span>Page ' + (cur+1) + ' of ' + total + '</span>' +
+        '<button onclick="(function(){{var s=document.getElementById(\\'pg-{cid}\\');s.__pg=(s.__pg||0)+1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===n//10?'disabled':'') + '><i class="fas fa-chevron-right"></i></button>' +
+        '</div>';
+    }}
+    render();
+    var sentinel = document.createElement('span');
+    sentinel.id = 'pg-{cid}';
+    sentinel.style.display = 'none';
+    pager.appendChild(sentinel);
+    sentinel.addEventListener('pg', function(){{
+      var total = Math.ceil(rows.length / PAGE);
+      cur = Math.max(0, Math.min(this.__pg, total-1));
+      render();
+    }});
+  }})();
+  </script>
 </details>"""
- 
+
     return open_block + closed_block
  
 # Build HTML blocks
@@ -1481,6 +1541,25 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 .resolve-btn-primary:hover {{
   opacity: 0.85;
   color: var(--bg);
+}}
+
+.pagination-bar {{ margin-top: 10px; }}
+.pager {{
+  display: flex; align-items: center; gap: 12px;
+  justify-content: center; padding: 8px 0;
+}}
+.pager button {{
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text2); border-radius: var(--r);
+  width: 32px; height: 32px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .12s;
+}}
+.pager button:hover:not(:disabled) {{ background: var(--border); color: var(--text); }}
+.pager button:disabled {{ opacity: 0.3; cursor: not-allowed; }}
+.pager span {{
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text3); letter-spacing: .04em;
 }}
 </style>
 </head>
