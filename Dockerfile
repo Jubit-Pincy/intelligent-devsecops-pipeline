@@ -47,7 +47,7 @@ CMD ["app.dll"]
 FROM python:3.12-slim AS runtime-python
 WORKDIR /app
 COPY requirements.txt* ./
-RUN pip install --no-cache-dir --only-binary :all: -r requirements.txt 2>/dev/null || true
+RUN pip install --no-cache-dir --only-binary --require-hashes :all: -r requirements.txt 2>/dev/null || true
 COPY . .
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
