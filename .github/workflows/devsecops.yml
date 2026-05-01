@@ -22,6 +22,11 @@ on:
         description: 'Medium risk ceiling'
         default: '30'
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   devsecops:
     uses: Jubit-Pincy/devsecops-toolkit/.github/workflows/reusable.yml@main
