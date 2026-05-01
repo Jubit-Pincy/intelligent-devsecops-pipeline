@@ -1975,18 +1975,32 @@ function resolveIssue(issueKey, transition, event) {{
         `;
       document.body.appendChild(toast);
 
-      var secs = 10;
-      window._toastTimer = setInterval(function() {{
+    var secs = 10;
+      var pollInterval = setInterval(function() {{
         secs--;
         var el = document.getElementById('toast-countdown');
         if (el) el.textContent = secs;
-        if (secs <= 0) clearInterval(window._toastTimer);
+        
+        if (secs <= 0) {{
+          clearInterval(pollInterval);
+          getAccessToken().then(function(token) {{
+            return fetch(API_ENDPOINT.replace(/\\/+$/, '') + '/api/issue-status/' + issueKey, {{
+              headers: {{ 'Authorization': 'Bearer ' + token }}
+            }});
+          }}).then(function(r) {{ return r.json(); }})
+          .then(function(data) {{
+            if (data.resolution) {{
+              window.location.reload();
+            }} else {{
+              var el = document.getElementById('toast-countdown');
+              if (el) el.textContent = '...still waiting';
+              setTimeout(function() {{ window.location.reload(); }}, 10000);
+            }}
+          }})
+          .catch(function() {{ window.location.reload(); }});
+        }}
       }}, 1000);
-
-      setTimeout(function() {{
-        toast.remove();
-        window.location.reload();
-      }}, 10000);
+      window._toastTimer = pollInterval;
     }})
     .catch(function(error) {{
       var errorMsg = '✗ Failed to resolve issue\\n\\n';
