@@ -1888,12 +1888,10 @@ function resolveIssue(issueKey, transition, event) {{
       return response.json();
     }})
     .then(function(result) {{
-      // Find the issue row and move it to closed section visually
       var fixRow = btn.closest('.fix-row');
       var issueRow = fixRow ? fixRow.previousElementSibling : null;
-      
+
       if (issueRow) {{
-        // Add resolution chip next to severity badge
         var severityTd = issueRow.cells[3];
         if (severityTd) {{
           var chip = document.createElement('span');
@@ -1902,82 +1900,67 @@ function resolveIssue(issueKey, transition, event) {{
           chip.textContent = label.toUpperCase().replace(' ', '_');
           severityTd.appendChild(chip);
         }}
-        
-        // Grey out the row
         issueRow.classList.add('closed-row');
         fixRow.classList.remove('open');
         fixRow.style.display = 'none';
         issueRow.classList.remove('expanded');
-        
-        // Remove resolve buttons from fix drawer
         var resolveActions = fixRow.querySelector('.resolve-actions');
         if (resolveActions) resolveActions.remove();
       }}
-      
-      // Show success toast instead of alert
+
       var toast = document.createElement('div');
-      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--low-fg);color:var(--low-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);';
-      toast.innerHTML = '<i class="fas fa-circle-check"></i> Issue marked as ' + label + '<button id="undoBtn" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:3px;font-family:var(--mono);font-size:11px;cursor:pointer;margin-left:8px;">' +
-        '<i class="fas fa-rotate-left"></i> Undo</button>';
+      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--low-fg);color:var(--low-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;';
+      toast.innerHTML = '<i class="fas fa-circle-check"></i>&nbsp;Issue marked as ' + label;
+      var undoBtn = document.createElement('button');
+      undoBtn.style.cssText = 'background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:3px;font-family:var(--mono);font-size:11px;cursor:pointer;margin-left:8px;';
+      undoBtn.innerHTML = '<i class="fas fa-rotate-left"></i>&nbsp;Undo';
+      toast.appendChild(undoBtn);
       document.body.appendChild(toast);
 
       var undoTimeout = setTimeout(function() {{ toast.remove(); }}, 8000);
-      
-      document.getElementById('undoBtn').addEventListener('click', function() {{
+
+      undoBtn.onclick = function() {{
         clearTimeout(undoTimeout);
         toast.remove();
-        
-        // Reopen in SonarCloud
-        getAccessToken().then(function(token) {{
+        getAccessToken().then(function(t) {{
           return fetch(API_ENDPOINT.replace(/\/+$/, '') + '/api/resolve-issue', {{
             method: 'POST',
-            headers: {{
-              'Authorization': 'Bearer ' + token,
-              'Content-Type': 'application/json'
-            }},
-            body: JSON.stringify({{
-              issue_key: issueKey,
-              transition: 'reopen',
-              comment: 'Reopened via undo on ' + new Date().toISOString()
-            }})
+            headers: {{ 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ issue_key: issueKey, transition: 'reopen', comment: 'Reopened via undo' }})
           }});
-        }}).then(function(response) {{
-          if (!response.ok) throw new Error('HTTP ' + response.status);
-          return response.json();
+        }}).then(function(r) {{
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
         }}).then(function() {{
-          // Restore the row
           if (issueRow) {{
             issueRow.classList.remove('closed-row');
-            var chip = issueRow.querySelector('.res-chip');
-            if (chip) chip.remove();
-            
-            // Restore resolve buttons
-            var fixInner = fixRow.querySelector('.fix-inner');
-            if (fixInner && !fixInner.querySelector('.resolve-actions')) {{
-              var actions = document.createElement('div');
-              actions.className = 'resolve-actions';
-              actions.innerHTML =
-                '<button class="resolve-btn" onclick="resolveIssue(\'' + issueKey + '\', \'wontfix\', event)"><i class="fas fa-ban"></i> Won\'t Fix</button>' +
-                '<button class="resolve-btn" onclick="resolveIssue(\'' + issueKey + '\', \'falsepositive\', event)"><i class="fas fa-flag"></i> False Positive</button>' +
-                '<button class="resolve-btn resolve-btn-primary" onclick="resolveIssue(\'' + issueKey + '\', \'resolve\', event)"><i class="fas fa-check"></i> Mark Resolved</button>';
-              fixInner.appendChild(actions);
+            var c = issueRow.querySelector('.res-chip');
+            if (c) c.remove();
+            var fi = fixRow.querySelector('.fix-inner');
+            if (fi && !fi.querySelector('.resolve-actions')) {{
+              var acts = document.createElement('div');
+              acts.className = 'resolve-actions';
+              acts.innerHTML = '<button class="resolve-btn" onclick="resolveIssue(\'' + issueKey + '\',\'wontfix\',event)"><i class="fas fa-ban"></i> Won\'t Fix</button>'
+                + '<button class="resolve-btn" onclick="resolveIssue(\'' + issueKey + '\',\'falsepositive\',event)"><i class="fas fa-flag"></i> False Positive</button>'
+                + '<button class="resolve-btn resolve-btn-primary" onclick="resolveIssue(\'' + issueKey + '\',\'resolve\',event)"><i class="fas fa-check"></i> Mark Resolved</button>';
+              fi.appendChild(acts);
             }}
           }}
-          
-          var undoneToast = document.createElement('div');
-          undoneToast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--med-fg);color:var(--med-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);';
-          undoneToast.innerHTML = '<i class="fas fa-rotate-left"></i> Issue reopened successfully';
-          document.body.appendChild(undoneToast);
-          setTimeout(function() {{ undoneToast.remove(); }}, 4000);
-        }}).catch(function(err) {{
-          var errToast = document.createElement('div');
-          errToast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--high-fg);color:var(--high-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);';
-          errToast.innerHTML = '<i class="fas fa-circle-xmark"></i> Undo failed: ' + err.message;
-          document.body.appendChild(errToast);
-          setTimeout(function() {{ errToast.remove(); }}, 4000);
+          var t2 = document.createElement('div');
+          t2.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--med-fg);color:var(--med-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;';
+          t2.innerHTML = '<i class="fas fa-rotate-left"></i>&nbsp;Issue reopened';
+          document.body.appendChild(t2);
+          setTimeout(function() {{ t2.remove(); }}, 4000);
+        }}).catch(function(e) {{
+          var t3 = document.createElement('div');
+          t3.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--high-fg);color:var(--high-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;';
+          t3.innerHTML = '<i class="fas fa-circle-xmark"></i>&nbsp;Undo failed: ' + e.message;
+          document.body.appendChild(t3);
+          setTimeout(function() {{ t3.remove(); }}, 4000);
         }});
-      }});
+      }};
     }})
+    .catch(function(error) {{
     .catch(function(error) {{
       var errorMsg = '✗ Failed to resolve issue\\n\\n';
       errorMsg += 'Error: ' + error.message + '\\n\\n';
