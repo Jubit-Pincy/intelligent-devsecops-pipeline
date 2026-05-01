@@ -628,7 +628,7 @@ jobs:
       - name: Deploy .NET App
         if: needs.detect.outputs.primary_type == 'dotnet'
         run: |
-          dotnet publish -c Release -o ./publish
+          dotnet publish App/App.csproj -c Release -o ./publish
           cd publish && zip -r ../app.zip .
           az webapp deployment source config-zip \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
