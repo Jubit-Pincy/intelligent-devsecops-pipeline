@@ -207,7 +207,7 @@ jobs:
             /d:sonar.host.url="${{ env.SONAR_URL }}"
           dotnet build
           dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
-          
+
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
         env:
@@ -244,10 +244,13 @@ jobs:
 
       - name: Restore history
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v3
         with:
+          workflow: devsecops.yml
           name: risk-history
           path: reports/
+          if_no_artifact_found: ignore
+          workflow_conclusion: ""
       
       - name: Run Risk Analyzer
         id: risk
