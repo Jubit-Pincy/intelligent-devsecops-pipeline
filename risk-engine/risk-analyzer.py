@@ -525,104 +525,63 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
 
     table_id = empty_label.replace(" ", "-")
 
-    open_block = ""
-    if rows_html:
-        rows_json = json.dumps([r for r in rows_html])
-        open_block = f"""
-<div class="table-wrap" id="wrap-{table_id}">
+    def paginated_block(rows, tid, extra_class=""):
+        rows_json = json.dumps(rows)
+        return f"""
+<div class="table-wrap{' ' + extra_class if extra_class else ''}" id="wrap-{tid}">
   <table class="issue-table">
     {thead}
-    <tbody id="tbody-{table_id}"></tbody>
+    <tbody id="tbody-{tid}"></tbody>
   </table>
-  <div class="pagination-bar" id="pager-{table_id}"></div>
-  <p class="table-note">
-    <i class="fas fa-circle-info"></i>
-    Click a row to expand remediation guidance.
-  </p>
+  <div class="pagination-bar" id="pager-{tid}"></div>
+  <p class="table-note"><i class="fas fa-circle-info"></i> Click a row to expand remediation guidance.</p>
 </div>
 <script>
 (function(){{
+  var PAGE = 10;
   var rows = {rows_json};
-  var PAGE = 10, cur = 0;
-  var tbody = document.getElementById('tbody-{table_id}');
-  var pager = document.getElementById('pager-{table_id}');
+  var cur = 0;
+  var total = Math.ceil(rows.length / PAGE);
+
   function render() {{
+    var tbody = document.getElementById('tbody-{tid}');
+    var pager = document.getElementById('pager-{tid}');
+    if (!tbody || !pager) return;
     tbody.innerHTML = rows.slice(cur * PAGE, (cur + 1) * PAGE).join('');
-    sentinel.__pg = cur;
-    var total = Math.ceil(rows.length / PAGE);
-    pager.innerHTML = total <= 1 ? '' :
+    if (total <= 1) {{ pager.innerHTML = ''; return; }}
+    pager.innerHTML =
       '<div class="pager">' +
-      '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)-1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===0?'disabled':'') + '><i class="fas fa-chevron-left"></i></button>' +
-      '<span>Page ' + (cur+1) + ' of ' + total + '</span>' +
-      '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)+1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===total-1?'disabled':'') + '><i class="fas fa-chevron-right"></i></button>' +
+      '<button id="prev-{tid}" ' + (cur === 0 ? 'disabled' : '') + '><i class="fas fa-chevron-left"></i></button>' +
+      '<span>Page ' + (cur + 1) + ' of ' + total + '</span>' +
+      '<button id="next-{tid}" ' + (cur === total - 1 ? 'disabled' : '') + '><i class="fas fa-chevron-right"></i></button>' +
       '</div>';
-    pager.appendChild(sentinel);
+    document.getElementById('prev-{tid}').onclick = function() {{ if (cur > 0) {{ cur--; render(); }} }};
+    document.getElementById('next-{tid}').onclick = function() {{ if (cur < total - 1) {{ cur++; render(); }} }};
   }}
+
   render();
-  var sentinel = document.createElement('span');
-  sentinel.id = 'pg-{table_id}';
-  sentinel.style.display = 'none';
-  pager.appendChild(sentinel);
-  sentinel.addEventListener('pg', function(){{
-    var total = Math.ceil(rows.length / PAGE);
-    cur = Math.max(0, Math.min(this.__pg, total-1));
-    render();
-    document.getElementById('wrap-{table_id}').scrollIntoView({{behavior:'smooth',block:'nearest'}});
-  }});
 }})();
 </script>"""
+
+    open_block = ""
+    if rows_html:
+        open_block = paginated_block(rows_html, table_id)
     else:
         open_block = f'<p class="empty-msg">No open {empty_label} — great work!</p>'
 
     closed_block = ""
     if closed_rows_html:
-        n = len(closed_rows_html)
-        rows_json = json.dumps([r for r in closed_rows_html])
         cid = table_id + "-closed"
         closed_block = f"""
 <details class="closed-section">
   <summary class="closed-summary">
     <i class="fas fa-circle-check"></i>
     <span>Closed / Resolved {empty_label.title()}</span>
-    <span class="closed-count">{n}</span>
+    <span class="closed-count">{len(closed_rows_html)}</span>
   </summary>
-  <div class="table-wrap closed-table-wrap" id="wrap-{cid}">
-    <table class="issue-table">
-      {thead}
-      <tbody id="tbody-{cid}"></tbody>
-    </table>
-    <div class="pagination-bar" id="pager-{cid}"></div>
+  <div class="closed-table-wrap">
+    {paginated_block(closed_rows_html, cid, "closed-table-wrap")}
   </div>
-  <script>
-  (function(){{
-    var rows = {rows_json};
-    var PAGE = 10, cur = 0;
-    var tbody = document.getElementById('tbody-{cid}');
-    var pager = document.getElementById('pager-{cid}');
-    function render() {{
-      tbody.innerHTML = rows.slice(cur * PAGE, (cur + 1) * PAGE).join('');
-      sentinel.__pg = cur;
-      var total = Math.ceil(rows.length / PAGE);
-      pager.innerHTML = total <= 1 ? '' :
-        '<div class="pager">' +
-        '<button onclick="(function(){{var s=document.getElementById(\\'pg-{cid}\\');s.__pg=(s.__pg||0)-1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===0?'disabled':'') + '><i class="fas fa-chevron-left"></i></button>' +
-        '<span>Page ' + (cur+1) + ' of ' + total + '</span>' +
-        '<button onclick="(function(){{var s=document.getElementById(\\'pg-{cid}\\');s.__pg=(s.__pg||0)+1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===total-1?'disabled':'') + '><i class="fas fa-chevron-right"></i></button>' +
-        '</div>';
-      pager.appendChild(sentinel);
-    }}
-    render();
-    var sentinel = document.createElement('span');
-    sentinel.id = 'pg-{cid}';
-    sentinel.style.display = 'none';
-    pager.appendChild(sentinel);
-    sentinel.addEventListener('pg', function(){{
-      var total = Math.ceil(rows.length / PAGE);
-      cur = Math.max(0, Math.min(this.__pg, total-1));
-      render();
-    }});
-  }})();
-  </script>
 </details>"""
 
     return open_block + closed_block
