@@ -1966,41 +1966,23 @@ function resolveIssue(issueKey, transition, event) {{
         'color:var(--text);padding:20px 28px;border-radius:var(--r);font-family:var(--mono);font-size:14px;' +
         'z-index:9999;display:flex;align-items:center;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.6);' +
         'min-width:320px;letter-spacing:.04em;';
-      toast.innerHTML = `
-        <i class="fas fa-check" style="color:var(--low-fg);font-size:16px;"></i> 
-        Issue marked as ${{label}} successfully.
-        Refreshing in <span id="toast-countdown">10</span>s...
-        <button onclick="undoResolve('${{issueKey}}')" style="...">↩ Undo</button>
-        <button onclick="clearInterval(window._toastTimer);this.closest('div').remove()" style="...">✕</button>
-        `;
+      toast.innerHTML = '<i class="fas fa-check" style="color:var(--low-fg);font-size:16px;"></i> Issue marked as ' + label + ' successfully.' +
+        ' <button onclick="undoResolve(\\\'' + issueKey + '\\\')" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);' +
+        'cursor:pointer;font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:var(--r);margin-left:8px;">↩ Undo</button>' +
+        ' <button onclick="clearInterval(window._toastTimer);this.closest(\\\'div\\\').remove()" style="background:none;border:none;color:var(--text3);' +
+        'cursor:pointer;font-family:var(--mono);font-size:13px;margin-left:4px;">✕</button>';
       document.body.appendChild(toast);
 
     var secs = 10;
-      var pollInterval = setInterval(function() {{
+      window._toastTimer = setInterval(function() {{
         secs--;
         var el = document.getElementById('toast-countdown');
         if (el) el.textContent = secs;
-        
         if (secs <= 0) {{
-          clearInterval(pollInterval);
-          getAccessToken().then(function(token) {{
-            return fetch(API_ENDPOINT.replace(/\\/+$/, '') + '/api/issue-status/' + issueKey, {{
-              headers: {{ 'Authorization': 'Bearer ' + token }}
-            }});
-          }}).then(function(r) {{ return r.json(); }})
-          .then(function(data) {{
-            if (data.resolution) {{
-              window.location.reload();
-            }} else {{
-              var el = document.getElementById('toast-countdown');
-              if (el) el.textContent = '...still waiting';
-              setTimeout(function() {{ window.location.reload(); }}, 10000);
-            }}
-          }})
-          .catch(function() {{ window.location.reload(); }});
+          clearInterval(window._toastTimer);
+          toast.remove();
         }}
       }}, 1000);
-      window._toastTimer = pollInterval;
     }})
     .catch(function(error) {{
       var errorMsg = '✗ Failed to resolve issue\\n\\n';
