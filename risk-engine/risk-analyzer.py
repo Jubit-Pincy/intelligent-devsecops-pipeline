@@ -664,12 +664,12 @@ html = f"""<!DOCTYPE html>
 {chartjs_tag}
 
 <style>
-/* -------------------
+/* ═══════════════════════════════════════════════
    Design tokens — Obsidian Minimalist (dark default)
    Core:    #000000 bg · #0B0B0B containers · #1F1F1F borders
             #FFFFFF text · #888888 sub-text
    Status:  #FF3B30 danger · #FFD60A warning · #32D74B success
-------------------- */
+═══════════════════════════════════════════════ */
 :root {{
   color-scheme: dark;
   --bg:         #121212;
@@ -714,9 +714,9 @@ html[data-theme="light"] {{
   --shadow: 0 4px 16px rgba(26, 24, 48, 0.06);
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Base
-------------------- */
+═══════════════════════════════════════════════ */
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
 body {{
@@ -732,9 +732,9 @@ body {{
 a {{ color: var(--text2); text-decoration: none; }}
 a:hover {{ color: var(--text); text-decoration: underline; }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Top nav
-------------------- */
+═══════════════════════════════════════════════ */
 .nav {{
   position: sticky; top: 0; z-index: 200;
   background: var(--bg2);
@@ -795,9 +795,9 @@ a:hover {{ color: var(--text); text-decoration: underline; }}
   background: var(--border);
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Hero
-------------------- */
+═══════════════════════════════════════════════ */
 .hero {{
   padding: 52px 28px 40px;
   text-align: center;
@@ -877,9 +877,9 @@ a:hover {{ color: var(--text); text-decoration: underline; }}
 .level-badge.risk-med  {{ color: var(--med-fg);  background: var(--med-bg);  border-color: var(--med-fg);  }}
 .level-badge.risk-high {{ color: var(--high-fg); background: var(--high-bg); border-color: var(--high-fg); }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Page layout
-------------------- */
+═══════════════════════════════════════════════ */
 .page {{ max-width: 1280px; margin: 0 auto; padding: 24px 20px 60px; }}
 
 .card {{
@@ -910,9 +910,9 @@ a:hover {{ color: var(--text); text-decoration: underline; }}
   flex-shrink: 0;
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Metric grid
-------------------- */
+═══════════════════════════════════════════════ */
 .metric-grid {{
   display: grid; 
   grid-template-columns: repeat(6, 1fr);
@@ -999,9 +999,9 @@ a:hover {{ color: var(--text); text-decoration: underline; }}
   font-family: var(--mono);
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Decision banner
-------------------- */
+═══════════════════════════════════════════════ */
 .decision-banner {{
   display: flex; align-items: flex-start; gap: 16px;
   padding: 16px 18px;
@@ -1053,9 +1053,9 @@ a:hover {{ color: var(--text); text-decoration: underline; }}
   line-height: 1.7;
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Tabs
-------------------- */
+═══════════════════════════════════════════════ */
 .tab-bar {{
   display: flex; gap: 2px;
   background: var(--bg3);
@@ -1095,9 +1095,9 @@ html[data-theme="light"] .tab-btn.active .tab-badge {{ background: rgba(255,255,
 .tab-pane {{ display: none; }}
 .tab-pane.active {{ display: block; }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Issue tables
-------------------- */
+═══════════════════════════════════════════════ */
 .table-wrap {{ overflow-x: auto; }}
 .issue-table {{
   width: 100%; border-collapse: collapse;
@@ -1312,9 +1312,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   letter-spacing: .04em;
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Links row
-------------------- */
+═══════════════════════════════════════════════ */
 .links-row {{
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1342,9 +1342,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   text-decoration: none;
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Chart
-------------------- */
+═══════════════════════════════════════════════ */
 .chart-wrap {{ position: relative; height: 260px; }}
 .chart-error {{
   height: 260px;
@@ -1357,9 +1357,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   letter-spacing: .04em;
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Footer
-------------------- */
+═══════════════════════════════════════════════ */
 .footer {{
   text-align: center;
   font-family: var(--mono);
@@ -1370,9 +1370,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   text-transform: uppercase;
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Language chart
-------------------- */
+═══════════════════════════════════════════════ */
 .lang-chart-container {{
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -1437,9 +1437,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
   color: var(--text2);
 }}
 
-/* -------------------
+/* ═══════════════════════════════════════════════
    Resolve buttons
-------------------- */
+═══════════════════════════════════════════════ */
 .resolve-actions {{
   display: flex;
   gap: 8px;
@@ -1672,9 +1672,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 </div>
 
 <script>
-/* --------------------------------------------------
+/* ══════════════════════════════════════════════════════
    Theme management
--------------------------------------------------- */
+══════════════════════════════════════════════════════ */
 var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
 var API_ENDPOINT = {api_endpoint_js};
 var AZURE_AD_CLIENT_ID = {azure_ad_client_id_js};
@@ -1723,9 +1723,9 @@ MEDIA.addEventListener('change', function() {{
   if ((saved || 'system') === 'system') applyTheme('system');
 }});
  
-/* --------------------------------------------------
+/* ══════════════════════════════════════════════════════
    Tabs
--------------------------------------------------- */
+══════════════════════════════════════════════════════ */
 function switchTab(name, btn) {{
   document.querySelectorAll('.tab-pane').forEach(function(p) {{
     p.classList.remove('active');
@@ -1737,9 +1737,9 @@ function switchTab(name, btn) {{
   btn.classList.add('active');
 }}
  
-/* --------------------------------------------------
+/* ══════════════════════════════════════════════════════
    Fix row toggle
--------------------------------------------------- */
+══════════════════════════════════════════════════════ */
 function toggleRow(uid) {{
   var row  = document.getElementById(uid);
   var trig = row.previousElementSibling;
@@ -1749,9 +1749,9 @@ function toggleRow(uid) {{
   trig.classList.toggle('expanded', !open);
 }}
  
-/* --------------------------------------------------
+/* ══════════════════════════════════════════════════════
    Resolve issue in SonarCloud
--------------------------------------------------- */
+══════════════════════════════════════════════════════ */
 var TRANSITION_LABELS = {{
   wontfix: "Won't Fix",
   falsepositive: 'False Positive',
@@ -1888,77 +1888,10 @@ function resolveIssue(issueKey, transition, event) {{
       return response.json();
     }})
     .then(function(result) {{
-      var fixRow = btn.closest('.fix-row');
-      var issueRow = fixRow ? fixRow.previousElementSibling : null;
-
-      if (issueRow) {{
-        var severityTd = issueRow.cells[3];
-        if (severityTd) {{
-          var chip = document.createElement('span');
-          chip.className = 'res-chip';
-          chip.style.setProperty('--res-fg', '#FFD60A');
-          chip.textContent = label.toUpperCase().replace(' ', '_');
-          severityTd.appendChild(chip);
-        }}
-        issueRow.classList.add('closed-row');
-        fixRow.classList.remove('open');
-        fixRow.style.display = 'none';
-        issueRow.classList.remove('expanded');
-        var resolveActions = fixRow.querySelector('.resolve-actions');
-        if (resolveActions) resolveActions.remove();
-      }}
-
-      var toast = document.createElement('div');
-      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--low-fg);color:var(--low-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;';
-      toast.innerHTML = '<i class="fas fa-circle-check"></i>&nbsp;Issue marked as ' + label;
-      var undoBtn = document.createElement('button');
-      undoBtn.style.cssText = 'background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:3px;font-family:var(--mono);font-size:11px;cursor:pointer;margin-left:8px;';
-      undoBtn.innerHTML = '<i class="fas fa-rotate-left"></i>&nbsp;Undo';
-      toast.appendChild(undoBtn);
-      document.body.appendChild(toast);
-
-      var undoTimeout = setTimeout(function() {{ toast.remove(); }}, 8000);
-
-      undoBtn.onclick = function() {{
-        clearTimeout(undoTimeout);
-        toast.remove();
-        getAccessToken().then(function(t) {{
-          return fetch(API_ENDPOINT.replace(/\/+$/, '') + '/api/resolve-issue', {{
-            method: 'POST',
-            headers: {{ 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{ issue_key: issueKey, transition: 'reopen', comment: 'Reopened via undo' }})
-          }});
-        }}).then(function(r) {{
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        }}).then(function() {{
-          if (issueRow) {{
-            issueRow.classList.remove('closed-row');
-            var c = issueRow.querySelector('.res-chip');
-            if (c) c.remove();
-            var fi = fixRow.querySelector('.fix-inner');
-            if (fi && !fi.querySelector('.resolve-actions')) {{
-              var acts = document.createElement('div');
-              acts.className = 'resolve-actions';
-              acts.innerHTML = '<button class="resolve-btn" onclick="resolveIssue(\\'' + issueKey + '\\',\\'wontfix\\',event)"><i class="fas fa-ban"></i> Won\\'t Fix</button>'
-                + '<button class="resolve-btn" onclick="resolveIssue(\\'' + issueKey + '\\',\\'falsepositive\\',event)"><i class="fas fa-flag"></i> False Positive</button>'
-                + '<button class="resolve-btn resolve-btn-primary" onclick="resolveIssue(\\'' + issueKey + '\\',\\'resolve\\',event)"><i class="fas fa-check"></i> Mark Resolved</button>';
-              fi.appendChild(acts);
-            }}
-          }}
-          var t2 = document.createElement('div');
-          t2.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--med-fg);color:var(--med-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;';
-          t2.innerHTML = '<i class="fas fa-rotate-left"></i>&nbsp;Issue reopened';
-          document.body.appendChild(t2);
-          setTimeout(function() {{ t2.remove(); }}, 4000);
-        }}).catch(function(e) {{
-          var t3 = document.createElement('div');
-          t3.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--high-fg);color:var(--high-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;';
-          t3.innerHTML = '<i class="fas fa-circle-xmark"></i>&nbsp;Undo failed: ' + e.message;
-          document.body.appendChild(t3);
-          setTimeout(function() {{ t3.remove(); }}, 4000);
-        }});
-      }};
+      alert('✓ Issue marked as ' + label + ' successfully!\\n\\nRefresh the page to see updated status.');
+      setTimeout(function() {{
+        window.location.reload();
+      }}, 1500);
     }})
     .catch(function(error) {{
       var errorMsg = '✗ Failed to resolve issue\\n\\n';
@@ -1980,9 +1913,9 @@ function resolveIssue(issueKey, transition, event) {{
     }});
 }}
  
-/* --------------------------------------------------
+/* ══════════════════════════════════════════════════════
    Language distribution chart
--------------------------------------------------- */
+══════════════════════════════════════════════════════ */
 var LANG_DATA = {lang_chart_data};
 var langChartInstance = null;
  
@@ -2061,9 +1994,9 @@ function rebuildLangChart() {{
   }}
 }}
  
-/* --------------------------------------------------
+/* ══════════════════════════════════════════════════════
    Risk trend chart
--------------------------------------------------- */
+══════════════════════════════════════════════════════ */
 var CHART_DATA = {{
   labels: {h_labels},
   scores: {h_scores},
