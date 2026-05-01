@@ -1930,10 +1930,28 @@ function resolveIssue(issueKey, transition, event) {{
       return response.json();
     }})
     .then(function(result) {{
-      alert('✓ Issue marked as ' + label + ' successfully!\\n\\nRefresh the page to see updated status.');
+      // Remove row immediately from UI
+      var fixRow = btn.closest('tr.issue-row');
+      if (fixRow) {{
+        var next = fixRow.nextElementSibling;
+        if (next && next.classList.contains('fix-row')) next.remove();
+        fixRow.remove();
+      }}
+
+      // Show toast
+      var toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--border2);' +
+        'color:var(--text);padding:12px 18px;border-radius:var(--r);font-family:var(--mono);font-size:11px;' +
+        'z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow);';
+      toast.innerHTML = '<i class="fas fa-check" style="color:var(--low-fg)"></i> Issue marked as + label + successfully.' +
+        ' <button onclick="this.closest(\'div\').remove()" style="background:none;border:none;color:var(--text3);' +
+        'cursor:pointer;font-family:var(--mono);font-size:11px;margin-left:8px;">✕</button>';
+      document.body.appendChild(toast);
+
       setTimeout(function() {{
+        toast.remove();
         window.location.reload();
-      }}, 1500);
+      }}, 5000);
     }})
     .catch(function(error) {{
       var errorMsg = '✗ Failed to resolve issue\\n\\n';
