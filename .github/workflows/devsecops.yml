@@ -156,7 +156,7 @@ jobs:
 
       - name: Build .NET
         if: needs.detect.outputs.primary_type == 'dotnet'
-        run: dotnet build --configuration Release
+        run: dotnet build App/App.csproj --configuration Release
 
       - name: Setup Python
         if: needs.detect.outputs.primary_type == 'python'
