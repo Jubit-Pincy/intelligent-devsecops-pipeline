@@ -548,23 +548,24 @@ jobs:
           URL=$(az containerapp show \
             --name $API_NAME \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --query properties.configuration.ingress.fqdn -o tsv 2>/dev/null)
+            --query properties.configuration.ingress.fqdn \
+            --output tsv 2>/dev/null)
 
           if [ -z "$URL" ]; then
-            echo "⚠️ Could not retrieve URL from properties.configuration.ingress.fqdn, trying alternate..."
+            echo "⚠️ Trying alternate query..."
             URL=$(az containerapp show \
-              --name $API_NAME \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --query properties.configuration.ingress.fqdn \
-              --output tsv 2>/dev/null || \
-            az containerapp show \
               --name $API_NAME \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --query 'properties.configuration.ingress.fqdn' \
               --output tsv 2>/dev/null)
-          
-          echo "url=https://$URL" >> "$GITHUB_OUTPUT"
-          echo "✅ DevSecOps API deployed: https://$URL"
+          fi
+
+          if [ -z "$URL" ]; then
+            echo "⚠️ Could not capture URL"
+          else
+            echo "url=https://$URL" >> "$GITHUB_OUTPUT"
+            echo "✅ DevSecOps API deployed: https://$URL"
+          fi
 
   # ═══════════════════════════════════════════════════════════════
   # JOB 7: Deploy Application (BLOCKED on HIGH risk)
