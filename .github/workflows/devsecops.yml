@@ -566,6 +566,8 @@ jobs:
             echo "url=https://$URL" >> "$GITHUB_OUTPUT"
             echo "✅ DevSecOps API deployed: https://$URL"
           fi
+          echo "Debug - URL value: '$URL'"
+          echo "Debug - GITHUB_OUTPUT: '$GITHUB_OUTPUT'"
 
   # ═══════════════════════════════════════════════════════════════
   # JOB 7: Deploy Application (BLOCKED on HIGH risk)
@@ -650,6 +652,7 @@ jobs:
               SONAR_URL=${{ env.SONAR_URL }}
 
       - name: Get App URL
+        id: get_url
         run: |
           URL=$(az webapp show \
             --name ${{ secrets.AZURE_WEBAPP_NAME }} \
