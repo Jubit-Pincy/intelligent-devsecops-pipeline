@@ -645,9 +645,11 @@ jobs:
 
       - name: Get App URL
         id: get_url
+        env:
+          WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
         run: |
           URL=$(az webapp show \
-            --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+            --name "$WEBAPP_NAME" \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --query defaultHostName -o tsv)
           echo "✅ Application deployed: https://$URL"
