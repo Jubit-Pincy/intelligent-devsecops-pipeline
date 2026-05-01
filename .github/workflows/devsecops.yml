@@ -15,6 +15,7 @@ env:
   WEIGHT_VULNS: 5
   WEIGHT_HOTSPOTS: 2
   AZURE_API_NAME: devsecops-api-85826533
+  AZURE_WEBAPP_NAME: devsecops-dashboard
 
 permissions:
   contents: write
@@ -601,10 +602,10 @@ jobs:
 
       - name: Create Web App if not exists
         run: |
-          if ! az webapp show --name ${{ secrets.AZURE_WEBAPP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} &>/dev/null; then
+          if ! az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} &>/dev/null; then
             echo "Creating web app..."
             az webapp create \
-              --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+              --name ${{ env.AZURE_WEBAPP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --plan plan-weather \
               --runtime "DOTNETCORE:8.0"
@@ -614,14 +615,14 @@ jobs:
         if: needs.detect.outputs.primary_type == 'python'
         uses: azure/webapps-deploy@v2
         with:
-          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: .
 
       - name: Deploy Node App
         if: needs.detect.outputs.primary_type == 'node'
         uses: azure/webapps-deploy@v2
         with:
-          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: .
 
       - name: Deploy .NET App
@@ -631,13 +632,13 @@ jobs:
           cd publish && zip -r ../app.zip .
           az webapp deployment source config-zip \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
             --src ../app.zip
 
       - name: Configure App Settings
         run: |
           az webapp config appsettings set \
-            --name ${{ secrets.AZURE_WEBAPP_NAME }} \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --settings \
               API_ENDPOINT=${{ needs.deploy-api.outputs.api_url }} \
@@ -646,7 +647,7 @@ jobs:
       - name: Get App URL
         id: get_url
         env:
-          WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+          WEBAPP_NAME: ${{ env.AZURE_WEBAPP_NAME }}
         run: |
           URL=$(az webapp show \
             --name "$WEBAPP_NAME" \
