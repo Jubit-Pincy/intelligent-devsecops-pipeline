@@ -635,6 +635,13 @@ jobs:
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --src ../app.zip
 
+      - name: Configure Web App startup
+        run: |
+          az webapp config set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --startup-file "dotnet App.dll"
+            
       - name: Configure App Settings
         run: |
           az webapp config appsettings set \
