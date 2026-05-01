@@ -1672,7 +1672,9 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 </div>
 
 <script>
-/* Theme management */
+/* ══════════════════════════════════════════════════════
+   Theme management
+══════════════════════════════════════════════════════ */
 var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
 var API_ENDPOINT = {api_endpoint_js};
 var AZURE_AD_CLIENT_ID = {azure_ad_client_id_js};
@@ -1915,66 +1917,9 @@ function resolveIssue(issueKey, transition, event) {{
       // Show success toast instead of alert
       var toast = document.createElement('div');
       toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--low-fg);color:var(--low-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);';
-      toast.innerHTML = '<i class="fas fa-circle-check"></i> Issue marked as ' + label + '<button id="undoBtn" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:3px;font-family:var(--mono);font-size:11px;cursor:pointer;margin-left:8px;">' +
-        '<i class="fas fa-rotate-left"></i> Undo</button>';
+      toast.innerHTML = '<i class="fas fa-circle-check"></i> Issue marked as ' + label + ' — will reflect on next pipeline run';
       document.body.appendChild(toast);
-
-      var undoTimeout = setTimeout(function() {{ toast.remove(); }}, 8000);
-      
-      document.getElementById('undoBtn').addEventListener('click', function() {{
-        clearTimeout(undoTimeout);
-        toast.remove();
-        
-        // Reopen in SonarCloud
-        getAccessToken().then(function(token) {{
-          return fetch(API_ENDPOINT.replace(/\/+$/, '') + '/api/resolve-issue', {{
-            method: 'POST',
-            headers: {{
-              'Authorization': 'Bearer ' + token,
-              'Content-Type': 'application/json'
-            }},
-            body: JSON.stringify({{
-              issue_key: issueKey,
-              transition: 'reopen',
-              comment: 'Reopened via undo on ' + new Date().toISOString()
-            }})
-          }});
-        }}).then(function(response) {{
-          if (!response.ok) throw new Error('HTTP ' + response.status);
-          return response.json();
-        }}).then(function() {{
-          // Restore the row
-          if (issueRow) {{
-            issueRow.classList.remove('closed-row');
-            var chip = issueRow.querySelector('.res-chip');
-            if (chip) chip.remove();
-            
-            // Restore resolve buttons
-            var fixInner = fixRow.querySelector('.fix-inner');
-            if (fixInner && !fixInner.querySelector('.resolve-actions')) {{
-              var actions = document.createElement('div');
-              actions.className = 'resolve-actions';
-              actions.innerHTML =
-                '<button class="resolve-btn" onclick="resolveIssue(\'' + issueKey + '\', \'wontfix\', event)"><i class="fas fa-ban"></i> Won\'t Fix</button>' +
-                '<button class="resolve-btn" onclick="resolveIssue(\'' + issueKey + '\', \'falsepositive\', event)"><i class="fas fa-flag"></i> False Positive</button>' +
-                '<button class="resolve-btn resolve-btn-primary" onclick="resolveIssue(\'' + issueKey + '\', \'resolve\', event)"><i class="fas fa-check"></i> Mark Resolved</button>';
-              fixInner.appendChild(actions);
-            }}
-          }}
-          
-          var undoneToast = document.createElement('div');
-          undoneToast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--med-fg);color:var(--med-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);';
-          undoneToast.innerHTML = '<i class="fas fa-rotate-left"></i> Issue reopened successfully';
-          document.body.appendChild(undoneToast);
-          setTimeout(function() {{ undoneToast.remove(); }}, 4000);
-        }}).catch(function(err) {{
-          var errToast = document.createElement('div');
-          errToast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--high-fg);color:var(--high-fg);padding:12px 20px;border-radius:5px;font-family:var(--mono);font-size:12px;z-index:9999;box-shadow:var(--shadow);';
-          errToast.innerHTML = '<i class="fas fa-circle-xmark"></i> Undo failed: ' + err.message;
-          document.body.appendChild(errToast);
-          setTimeout(function() {{ errToast.remove(); }}, 4000);
-        }});
-      }});
+      setTimeout(function() {{ toast.remove(); }}, 4000);
     }})
     .catch(function(error) {{
       var errorMsg = '✗ Failed to resolve issue\\n\\n';
