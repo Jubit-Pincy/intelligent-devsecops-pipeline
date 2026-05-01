@@ -14,6 +14,7 @@ env:
   WEIGHT_BUGS: 3
   WEIGHT_VULNS: 5
   WEIGHT_HOTSPOTS: 2
+  AZURE_API_NAME: devsecops-api-85826533
 
 permissions:
   contents: write
@@ -495,7 +496,7 @@ jobs:
       - name: Deploy Container App
         id: deploy
         env:
-          API_NAME: ${{ secrets.AZURE_API_NAME }}
+          API_NAME: ${{ env.AZURE_API_NAME }}
           ACR_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
           IMAGE: ${{ secrets.ACR_LOGIN_SERVER }}/devsecops-api:${{ github.sha }}
         run: |
@@ -550,15 +551,6 @@ jobs:
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn \
             --output tsv 2>/dev/null)
-
-          if [ -z "$URL" ]; then
-            echo "⚠️ Trying alternate query..."
-            URL=$(az containerapp show \
-              --name $API_NAME \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --query 'properties.configuration.ingress.fqdn' \
-              --output tsv 2>/dev/null)
-          fi
 
           if [ -z "$URL" ]; then
             echo "⚠️ Could not capture URL"
