@@ -534,13 +534,6 @@ jobs:
               --cpu 0.5 --memory 1.0Gi \
               --min-replicas 1 --max-replicas 3
           fi
-          
-          echo "Setting ingress timeout..."
-          az containerapp ingress update \
-            --name $API_NAME \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --transport http \
-            --timeout 120
 
           # Configure CORS
           echo "Configuring CORS..."
