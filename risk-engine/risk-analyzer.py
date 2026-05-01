@@ -448,7 +448,7 @@ def issue_row(issue: dict, itype: str = "BUG", is_closed: bool = False) -> str:
       </a>
       {'' if is_closed else f'''
       <div class="resolve-actions">
-        <button class="resolve-btn" onclick="resolveIssue('{key}', 'wontfix', event)">
+        <button class="resolve-btn" data-resolved="false" onclick="resolveIssue('{key}', 'wontfix', event)">
           <i class="fas fa-ban"></i> Won't Fix
         </button>
         <button class="resolve-btn" onclick="resolveIssue('{key}', 'falsepositive', event)">
@@ -1953,6 +1953,12 @@ function resolveIssue(issueKey, transition, event) {{
             chip.style.setProperty('--res-fg', col);
             chip.textContent = lbl;
             sevCell.appendChild(chip);
+            fixRow.querySelectorAll('.resolve-btn').forEach(function(b) {{
+              b.disabled = true;
+              b.style.opacity = '0.3';
+              b.style.cursor = 'not-allowed';
+              b.style.pointerEvents = 'none';
+            }});
           }}
           fixRow.classList.remove('open');
           fixRow.style.display = 'none';
