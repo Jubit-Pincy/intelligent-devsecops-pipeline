@@ -1930,15 +1930,38 @@ function resolveIssue(issueKey, transition, event) {{
       return response.json();
     }})
     .then(function(result) {{
-      var fixRow = btn.closest('tr.issue-row');
+    var fixRow = btn.closest('tr.fix-row');
       if (fixRow) {{
-        var next = fixRow.nextElementSibling;
-        if (next && next.classList.contains('fix-row')) next.remove();
-        fixRow.remove();
+        var issueRow = fixRow.previousElementSibling;
+        if (issueRow && issueRow.classList.contains('issue-row')) {{
+          var sevCell = issueRow.querySelectorAll('td')[3];
+          if (sevCell) {{
+            var resColors = {{
+              wontfix: '#FFD60A',
+              falsepositive: '#888888',
+              resolve: '#32D74B'
+            }};
+            var resLabels = {{
+              wontfix: 'WONTFIX',
+              falsepositive: 'FALSE-POSITIVE',
+              resolve: 'FIXED'
+            }};
+            var col = resColors[transition] || '#888888';
+            var lbl = resLabels[transition] || transition.toUpperCase();
+            var chip = document.createElement('span');
+            chip.className = 'res-chip';
+            chip.style.setProperty('--res-fg', col);
+            chip.textContent = lbl;
+            sevCell.appendChild(chip);
+          }}
+          fixRow.classList.remove('open');
+          fixRow.style.display = 'none';
+          issueRow.classList.remove('expanded');
+        }}
       }}
 
       var toast = document.createElement('div');
-      toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--border2);' +
+        toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg2);border:1px solid var(--border2);' +
         'color:var(--text);padding:12px 18px;border-radius:var(--r);font-family:var(--mono);font-size:11px;' +
         'z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow);';
       toast.innerHTML = '<i class="fas fa-check" style="color:var(--low-fg)"></i> Issue marked as ' + label + ' successfully.' +
