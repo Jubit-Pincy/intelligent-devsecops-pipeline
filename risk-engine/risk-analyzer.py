@@ -547,16 +547,16 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
   var tbody = document.getElementById('tbody-{table_id}');
   var pager = document.getElementById('pager-{table_id}');
   function render() {{
-      tbody.innerHTML = rows.slice(cur * PAGE, (cur + 1) * PAGE).join('');
-      sentinel.__pg = cur;
-      var total = Math.ceil(rows.length / PAGE);
-      pager.innerHTML = total <= 1 ? '' :
-        '<div class="pager">' +
-        '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)-1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===0?'disabled':'') + '><i class="fas fa-chevron-left"></i></button>' +
-        '<span>Page ' + (cur+1) + ' of ' + total + '</span>' +
-        '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)+1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===total-1?'disabled':'') + '><i class="fas fa-chevron-right"></i></button>' +
-        '</div>';
-      pager.appendChild(sentinel);
+    tbody.innerHTML = rows.slice(cur * PAGE, (cur + 1) * PAGE).join('');
+    sentinel.__pg = cur;
+    var total = Math.ceil(rows.length / PAGE);
+    pager.innerHTML = total <= 1 ? '' :
+      '<div class="pager">' +
+      '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)-1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===0?'disabled':'') + '><i class="fas fa-chevron-left"></i></button>' +
+      '<span>Page ' + (cur+1) + ' of ' + total + '</span>' +
+      '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)+1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===total-1?'disabled':'') + '><i class="fas fa-chevron-right"></i></button>' +
+      '</div>';
+    pager.appendChild(sentinel);
   }}
   render();
   var sentinel = document.createElement('span');
@@ -600,17 +600,17 @@ def issues_table(rows_html: list, closed_rows_html: list, empty_label: str) -> s
     var tbody = document.getElementById('tbody-{cid}');
     var pager = document.getElementById('pager-{cid}');
     function render() {{
-        tbody.innerHTML = rows.slice(cur * PAGE, (cur + 1) * PAGE).join('');
-        sentinel.__pg = cur;
-        var total = Math.ceil(rows.length / PAGE);
-        pager.innerHTML = total <= 1 ? '' :
-          '<div class="pager">' +
-          '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)-1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===0?'disabled':'') + '><i class="fas fa-chevron-left"></i></button>' +
-          '<span>Page ' + (cur+1) + ' of ' + total + '</span>' +
-          '<button onclick="(function(){{var s=document.getElementById(\\'pg-{table_id}\\');s.__pg=(s.__pg||0)+1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===total-1?'disabled':'') + '><i class="fas fa-chevron-right"></i></button>' +
-          '</div>';
-        pager.appendChild(sentinel);
-      }}
+      tbody.innerHTML = rows.slice(cur * PAGE, (cur + 1) * PAGE).join('');
+      sentinel.__pg = cur;
+      var total = Math.ceil(rows.length / PAGE);
+      pager.innerHTML = total <= 1 ? '' :
+        '<div class="pager">' +
+        '<button onclick="(function(){{var s=document.getElementById(\\'pg-{cid}\\');s.__pg=(s.__pg||0)-1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===0?'disabled':'') + '><i class="fas fa-chevron-left"></i></button>' +
+        '<span>Page ' + (cur+1) + ' of ' + total + '</span>' +
+        '<button onclick="(function(){{var s=document.getElementById(\\'pg-{cid}\\');s.__pg=(s.__pg||0)+1;s.dispatchEvent(new Event(\\'pg\\'))}})()" ' + (cur===total-1?'disabled':'') + '><i class="fas fa-chevron-right"></i></button>' +
+        '</div>';
+      pager.appendChild(sentinel);
+    }}
     render();
     var sentinel = document.createElement('span');
     sentinel.id = 'pg-{cid}';
