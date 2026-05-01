@@ -1961,18 +1961,32 @@ function resolveIssue(issueKey, transition, event) {{
       }}
 
       var toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg2);border:1px solid var(--border2);' +
-        'color:var(--text);padding:12px 18px;border-radius:var(--r);font-family:var(--mono);font-size:11px;' +
-        'z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow);';
-      toast.innerHTML = '<i class="fas fa-check" style="color:var(--low-fg)"></i> Issue marked as ' + label + ' successfully.' +
-        ' <button onclick="this.closest(\"div\").remove()" style="background:none;border:none;color:var(--text3);' +
-        'cursor:pointer;font-family:var(--mono);font-size:11px;margin-left:8px;">✕</button>';
+      toast.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+        'background:var(--bg2);border:2px solid var(--low-fg);' +
+        'color:var(--text);padding:20px 28px;border-radius:var(--r);font-family:var(--mono);font-size:14px;' +
+        'z-index:9999;display:flex;align-items:center;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.6);' +
+        'min-width:320px;letter-spacing:.04em;';
+      toast.innerHTML = `
+        <i class="fas fa-check" style="color:var(--low-fg);font-size:16px;"></i> 
+        Issue marked as ${{label}} successfully.
+        Refreshing in <span id="toast-countdown">10</span>s...
+        <button onclick="undoResolve('${{issueKey}}')" style="...">↩ Undo</button>
+        <button onclick="clearInterval(window._toastTimer);this.closest('div').remove()" style="...">✕</button>
+        `;
       document.body.appendChild(toast);
+
+      var secs = 10;
+      window._toastTimer = setInterval(function() {{
+        secs--;
+        var el = document.getElementById('toast-countdown');
+        if (el) el.textContent = secs;
+        if (secs <= 0) clearInterval(window._toastTimer);
+      }}, 1000);
 
       setTimeout(function() {{
         toast.remove();
         window.location.reload();
-      }}, 5000);
+      }}, 10000);
     }})
     .catch(function(error) {{
       var errorMsg = '✗ Failed to resolve issue\\n\\n';
@@ -1991,6 +2005,42 @@ function resolveIssue(issueKey, transition, event) {{
         btn.disabled = false;
         btn.innerHTML = originalHTML;
       }}
+    }});
+}}
+
+function undoResolve(issueKey) {{
+  clearInterval(window._toastTimer);
+  var toast = document.querySelector('div[style*="toast-countdown"]') ||
+    document.getElementById('toast-countdown')?.closest('div');
+
+  getAccessToken()
+    .then(function(token) {{
+      return fetch(API_ENDPOINT.replace(/\\/+$/, '') + '/api/resolve-issue', {{
+        method: 'POST',
+        headers: {{
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        }},
+        body: JSON.stringify({{
+          issue_key: issueKey,
+          transition: 'reopen',
+          comment: 'Reopened via undo in DevSecOps Dashboard on ' + new Date().toISOString()
+        }})
+      }});
+    }})
+    .then(function(response) {{
+      if (!response.ok) throw new Error('Reopen failed');
+      return response.json();
+    }})
+    .then(function() {{
+      // Remove toast and reload
+      document.querySelectorAll('div').forEach(function(d) {{
+        if (d.textContent.includes('marked as')) d.remove();
+      }});
+      window.location.reload();
+    }})
+    .catch(function(error) {{
+      alert('✗ Failed to undo: ' + error.message);
     }});
 }}
  
