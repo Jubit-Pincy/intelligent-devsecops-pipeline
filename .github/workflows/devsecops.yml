@@ -211,7 +211,8 @@ jobs:
             /k:"${{ needs.detect.outputs.project_key }}" \
             /o:"${{ env.SONAR_ORG }}" \
             /d:sonar.token="${{ secrets.SONAR_TOKEN }}" \
-            /d:sonar.host.url="${{ env.SONAR_URL }}"
+            /d:sonar.host.url="${{ env.SONAR_URL }}" \ 
+            /d:sonar.exclusions="**/risk-engine/**,**/reports/**,**/.github/**,**/bin/**,**/obj/**"
           dotnet build --configuration Release
           dotnet sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
@@ -228,12 +229,14 @@ jobs:
               -Dsonar.organization=${{ env.SONAR_ORG }} \
               -Dsonar.host.url=${{ env.SONAR_URL }} \
               -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+              -Dsonar.exclusions="**/risk-engine/**,**/reports/**,**/.github/**,**/bin/**,**/obj/*"
           else
             gradle sonarqube \
               -Dsonar.projectKey=${{ needs.detect.outputs.project_key }} \
               -Dsonar.organization=${{ env.SONAR_ORG }} \
               -Dsonar.host.url=${{ env.SONAR_URL }} \
               -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+              -Dsonar.exclusions="**/risk-engine/**,**/reports/**,**/.github/**,**/bin/**,**/obj/*"
           fi
 
       # Python, Node, Go — generic scanner works fine for these
