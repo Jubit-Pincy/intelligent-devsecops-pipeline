@@ -548,7 +548,20 @@ jobs:
           URL=$(az containerapp show \
             --name $API_NAME \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --query properties.configuration.ingress.fqdn -o tsv)
+            --query properties.configuration.ingress.fqdn -o tsv 2>/dev/null)
+
+          if [ -z "$URL" ]; then
+            echo "⚠️ Could not retrieve URL from properties.configuration.ingress.fqdn, trying alternate..."
+            URL=$(az containerapp show \
+              --name $API_NAME \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --query properties.configuration.ingress.fqdn \
+              --output tsv 2>/dev/null || \
+            az containerapp show \
+              --name $API_NAME \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --query 'properties.configuration.ingress.fqdn' \
+              --output tsv 2>/dev/null)
           
           echo "url=https://$URL" >> "$GITHUB_OUTPUT"
           echo "✅ DevSecOps API deployed: https://$URL"
@@ -708,14 +721,14 @@ jobs:
           
           ### Deployment Status
           - **DevSecOps API:** ${{ needs.deploy-api.result == 'success' && '✅ Deployed' || needs.deploy-api.result == 'skipped' && '⏭️ Skipped (no Azure creds)' || '❌ Failed' }}
-          - **API URL:** ${{ needs.deploy-api.outputs.api_url || needs.deploy-api.result == 'skipped' && 'N/A' || 'Capture failed — check deploy-api logs' }}
+          - **API URL:** ${{ needs.deploy-api.outputs.api_url || 'Capture failed — check deploy-api logs' }}
           - **Application:** ${{ needs.deploy-app.result }} ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ (Blocked due to HIGH risk)' || '' }}
           
           ### Deployment Decision
           ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ **APPLICATION DEPLOYMENT BLOCKED**<br><br>High security risk detected. Application deployment prevented.\nDevSecOps API deployed for issue remediation.<br><br>**Action Required:** Fix vulnerabilities and re-run pipeline.' || '✅ **DEPLOYMENT APPROVED**<br><br>Security risk acceptable. All systems deployed successfully.' }}
           
           ### URLs
-          - **DevSecOps API:** ${{ needs.deploy-api.outputs.api_url || 'Not deployed' }}
+          - **DevSecOps API:** ${{ needs.deploy-api.outputs.api_url || needs.deploy-api.result != 'success' && 'Not deployed' || 'URL capture failed' }}
           - **Application:** ${{ needs.risk.outputs.risk_level == 'HIGH' && 'Blocked (HIGH risk)' || needs.deploy-app.result == 'success' && 'Deployed successfully' || 'Not deployed' }}
           - **Security Dashboard:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
           EOF
