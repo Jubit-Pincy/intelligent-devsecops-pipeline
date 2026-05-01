@@ -1940,9 +1940,9 @@ function resolveIssue(issueKey, transition, event) {{
             if (fi && !fi.querySelector('.resolve-actions')) {{
               var acts = document.createElement('div');
               acts.className = 'resolve-actions';
-              acts.innerHTML = '<button class="resolve-btn" onclick="resolveIssue(\'' + issueKey + '\',\'wontfix\',event)"><i class="fas fa-ban"></i> Won\'t Fix</button>'
-                + '<button class="resolve-btn" onclick="resolveIssue(\'' + issueKey + '\',\'falsepositive\',event)"><i class="fas fa-flag"></i> False Positive</button>'
-                + '<button class="resolve-btn resolve-btn-primary" onclick="resolveIssue(\'' + issueKey + '\',\'resolve\',event)"><i class="fas fa-check"></i> Mark Resolved</button>';
+              acts.innerHTML = '<button class="resolve-btn" onclick="resolveIssue(\\'' + issueKey + '\\',\\'wontfix\\',event)"><i class="fas fa-ban"></i> Won\\'t Fix</button>'
+                + '<button class="resolve-btn" onclick="resolveIssue(\\'' + issueKey + '\\',\\'falsepositive\\',event)"><i class="fas fa-flag"></i> False Positive</button>'
+                + '<button class="resolve-btn resolve-btn-primary" onclick="resolveIssue(\\'' + issueKey + '\\',\\'resolve\\',event)"><i class="fas fa-check"></i> Mark Resolved</button>';
               fi.appendChild(acts);
             }}
           }}
