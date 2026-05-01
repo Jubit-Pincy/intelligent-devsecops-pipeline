@@ -1672,9 +1672,7 @@ details[open] > .closed-summary::after {{ transform: rotate(90deg); }}
 </div>
 
 <script>
-/* ══════════════════════════════════════════════════════
-   Theme management
-══════════════════════════════════════════════════════ */
+/* Theme management */
 var MEDIA = window.matchMedia('(prefers-color-scheme: dark)');
 var API_ENDPOINT = {api_endpoint_js};
 var AZURE_AD_CLIENT_ID = {azure_ad_client_id_js};
