@@ -15,7 +15,7 @@ env:
   WEIGHT_VULNS: 5
   WEIGHT_HOTSPOTS: 2
   AZURE_API_NAME: devsecops-api-85826533
-  AZURE_WEBAPP_NAME: devsecops-dashboard
+  AZURE_WEBAPP_NAME: devsecops-webapp
 
 permissions:
   contents: write
@@ -641,7 +641,7 @@ jobs:
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --startup-file "dotnet App.dll"
-            
+
       - name: Configure App Settings
         run: |
           az webapp config appsettings set \
