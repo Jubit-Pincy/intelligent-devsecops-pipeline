@@ -205,8 +205,6 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ needs.detect.outputs.project_key }}
             -Dsonar.organization=${{ env.SONAR_ORG }}
-            -Dsonar.sources=.
-            -Dsonar.exclusions=**/risk-engine/**,**/reports/**,**/.github/**,**/node_modules/**,**/venv/**
 
   # ═══════════════════════════════════════════════════════════════
   # JOB 4: Risk Analysis
