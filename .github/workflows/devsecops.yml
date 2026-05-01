@@ -16,7 +16,7 @@ env:
   WEIGHT_HOTSPOTS: 2
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -182,11 +182,11 @@ jobs:
   # JOB 3: SonarCloud
   # ═══════════════════════════════════════════════════════════════
   sonar:
-    name: 🛡️ SonarCloud
-    needs: [detect, build]
-    runs-on: ubuntu-latest
+      name: 🛡️ SonarCloud
+      needs: [detect, build]
+      runs-on: ubuntu-latest
 
-    steps:
+      steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -196,23 +196,55 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: .NET Sonar Scanner
+      # .NET — build-integrated scanner
+      - name: Setup .NET
+        if: needs.detect.outputs.primary_type == 'dotnet'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: SonarCloud Scan (.NET)
         if: needs.detect.outputs.primary_type == 'dotnet'
         run: |
           dotnet tool install --global dotnet-sonarscanner
           dotnet sonarscanner begin \
             /k:"${{ needs.detect.outputs.project_key }}" \
             /o:"${{ env.SONAR_ORG }}" \
-            /d:sonar.login="${{ secrets.SONAR_TOKEN }}" \
+            /d:sonar.token="${{ secrets.SONAR_TOKEN }}" \
             /d:sonar.host.url="${{ env.SONAR_URL }}"
-          dotnet build
-          dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
+          dotnet build --configuration Release
+          dotnet sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
-      - name: SonarCloud Scan
+      # Java — build-integrated scanner
+      - name: SonarCloud Scan (Java/Maven)
+        if: needs.detect.outputs.primary_type == 'java'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -f "pom.xml" ]; then
+            mvn verify sonar:sonar \
+              -Dsonar.projectKey=${{ needs.detect.outputs.project_key }} \
+              -Dsonar.organization=${{ env.SONAR_ORG }} \
+              -Dsonar.host.url=${{ env.SONAR_URL }} \
+              -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+          else
+            gradle sonarqube \
+              -Dsonar.projectKey=${{ needs.detect.outputs.project_key }} \
+              -Dsonar.organization=${{ env.SONAR_ORG }} \
+              -Dsonar.host.url=${{ env.SONAR_URL }} \
+              -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+          fi
+
+      # Python, Node, Go — generic scanner works fine for these
+      - name: SonarCloud Scan (Python/Node/Go)
+        if: |
+          needs.detect.outputs.primary_type != 'dotnet' &&
+          needs.detect.outputs.primary_type != 'java'
         uses: SonarSource/sonarcloud-github-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN:  ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
             -Dsonar.projectKey=${{ needs.detect.outputs.project_key }}
@@ -242,15 +274,14 @@ jobs:
       - name: Install deps
         run: pip install requests
 
-      - name: Restore history
+      - name: Restore history from branch
         continue-on-error: true
-        uses: dawidd6/action-download-artifact@v3
-        with:
-          workflow: devsecops.yml
-          name: risk-history
-          path: reports/
-          if_no_artifact_found: ignore
-          workflow_conclusion: ""
+        run: |
+          mkdir -p reports
+          git fetch origin risk-history 2>/dev/null && \
+          git checkout origin/risk-history -- history.json 2>/dev/null && \
+          mv history.json reports/history.json || \
+          echo "No history yet — starting fresh"
       
       - name: Run Risk Analyzer
         id: risk
@@ -285,6 +316,18 @@ jobs:
           echo "Risk Score: ${SCORE}"
           echo "════════════════════════════════"
 
+      - name: Save history to branch
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git fetch origin
+          git checkout --orphan risk-history-tmp
+          cp reports/history.json history.json
+          git add history.json
+          git commit -m "chore: update risk history [skip ci]"
+          git push origin HEAD:risk-history --force
+
       - name: Inject config into report
         env:
           PUBLISHED_API_URL: ${{ secrets.API_ENDPOINT || '' }}
@@ -305,14 +348,18 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      - name: Upload history
-        uses: actions/upload-artifact@v4
-        with:
-          name: risk-history
-          path: reports/history.json
-          retention-days: 90
-          if-no-files-found: warn
-          overwrite: true
+      - name: Save history
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git fetch origin
+          git checkout --orphan risk-history-tmp 2>/dev/null || git checkout risk-history-tmp
+          git rm -rf . --quiet 2>/dev/null || true
+          cp reports/history.json history.json
+          git add history.json
+          git commit -m "chore: update risk history [skip ci]"
+          git push origin HEAD:risk-history --force
 
       - name: ❌ Fail pipeline if HIGH risk
         if: steps.risk.outputs.risk_level == 'HIGH'
