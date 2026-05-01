@@ -1961,7 +1961,6 @@ function resolveIssue(issueKey, transition, event) {{
       }};
     }})
     .catch(function(error) {{
-    .catch(function(error) {{
       var errorMsg = '✗ Failed to resolve issue\\n\\n';
       errorMsg += 'Error: ' + error.message + '\\n\\n';
       errorMsg += 'Troubleshooting:\\n';
