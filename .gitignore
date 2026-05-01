@@ -485,3 +485,7 @@ $RECYCLE.BIN/
 
 # .github workflow files
 .github/**azure-credentials.json
+
+# bin and obj folders
+**/bin/
+**/obj/
