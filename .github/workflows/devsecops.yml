@@ -701,30 +701,61 @@ jobs:
 
     steps:
       - name: Create Summary
+        env:
+          RISK_LEVEL:   ${{ needs.risk.outputs.risk_level }}
+          RISK_SCORE:   ${{ needs.risk.outputs.risk_score }}
+          API_RESULT:   ${{ needs.deploy-api.result }}
+          API_URL:      ${{ needs.deploy-api.outputs.api_url }}
+          APP_RESULT:   ${{ needs.deploy-app.result }}
+          APP_URL:      ${{ needs.deploy-app.outputs.app_url }}
+          PRIMARY_TYPE: ${{ needs.detect.outputs.primary_type }}
+          HAS_APP:      ${{ needs.detect.outputs.has_app }}
+          HAS_CREDS:    ${{ needs.detect.outputs.has_azure_creds }}
+          REPO_OWNER:   ${{ github.repository_owner }}
+          REPO_NAME:    ${{ github.event.repository.name }}
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
-          ## 🎯 DevSecOps Pipeline Results
-          
-          ### Detection
-          - **Project Type:** ${{ needs.detect.outputs.primary_type }}
-          - **Has Application:** ${{ needs.detect.outputs.has_app }}
-          - **Azure Credentials:** ${{ needs.detect.outputs.has_azure_creds }}
-          
-          ### Security Analysis
-          - **Risk Level:** ${{ needs.risk.outputs.risk_level || 'Not Available' }}
-          - **Risk Score:** ${{ needs.risk.outputs.risk_score || 'N/A' }}
-          - **Risk Job Status:** ${{ needs.risk.result }}
-          
-          ### Deployment Status
-          - **DevSecOps API:** ${{ needs.deploy-api.result == 'success' && '✅ Deployed' || needs.deploy-api.result == 'skipped' && '⏭️ Skipped (no Azure creds)' || '❌ Failed' }}
-          - **API URL:** ${{ needs.deploy-api.outputs.api_url || 'Capture failed — check deploy-api logs' }}
-          - **Application:** ${{ needs.deploy-app.result }} ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ (Blocked due to HIGH risk)' || '' }}
-          
-          ### Deployment Decision
-          ${{ needs.risk.outputs.risk_level == 'HIGH' && '⛔ **APPLICATION DEPLOYMENT BLOCKED**<br><br>High security risk detected. Application deployment prevented.\nDevSecOps API deployed for issue remediation.<br><br>**Action Required:** Fix vulnerabilities and re-run pipeline.' || '✅ **DEPLOYMENT APPROVED**<br><br>Security risk acceptable. All systems deployed successfully.' }}
-          
-          ### URLs
-          - **DevSecOps API:** ${{ needs.deploy-api.outputs.api_url || needs.deploy-api.result != 'success' && 'Not deployed' || 'URL capture failed' }}
-          - **Application:** ${{ needs.risk.outputs.risk_level == 'HIGH' && 'Blocked (HIGH risk)' || needs.deploy-app.result == 'success' && 'Deployed successfully' || 'Not deployed' }}
-          - **Security Dashboard:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-          EOF
+          if   [ "$API_RESULT" = "success" ]; then API_STATUS="✅ Deployed"
+          elif [ "$API_RESULT" = "skipped" ]; then API_STATUS="⏭️ Skipped (no Azure creds)"
+          else API_STATUS="❌ Failed"; fi
+
+          if   [ "$RISK_LEVEL" = "HIGH" ];    then APP_STATUS="⛔ Blocked (HIGH risk)"
+          elif [ "$APP_RESULT" = "success" ]; then APP_STATUS="✅ ${APP_URL}"
+          elif [ "$APP_RESULT" = "skipped" ]; then APP_STATUS="⏭️ Skipped"
+          else APP_STATUS="❌ Failed / not run"; fi
+
+          if [ "$RISK_LEVEL" = "HIGH" ]; then
+            DECISION="⛔ **APPLICATION DEPLOYMENT BLOCKED** — fix vulnerabilities and re-run."
+          else
+            DECISION="✅ **DEPLOYMENT APPROVED** — all systems deployed successfully."
+          fi
+
+          {
+            echo "## 🎯 DevSecOps Pipeline Results"
+            echo ""
+            echo "### Detection"
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Project Type | \`${PRIMARY_TYPE}\` |"
+            echo "| Has Application | ${HAS_APP} |"
+            echo "| Azure Credentials | ${HAS_CREDS} |"
+            echo ""
+            echo "### Security Analysis"
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Risk Level | **${RISK_LEVEL:-N/A}** |"
+            echo "| Risk Score | ${RISK_SCORE:-N/A} |"
+            echo ""
+            echo "### Deployment Status"
+            echo "| Component | Status |"
+            echo "|---|---|"
+            echo "| DevSecOps API | ${API_STATUS} |"
+            echo "| Application | ${APP_STATUS} |"
+            echo ""
+            echo "### Decision"
+            echo "${DECISION}"
+            echo ""
+            echo "### URLs"
+            echo "- **DevSecOps API:** ${API_URL:-_not deployed_}"
+            echo "- **Application:** ${APP_URL:-_not deployed_}"
+            echo "- **Security Dashboard:** https://${REPO_OWNER}.github.io/${REPO_NAME}/"
+          } >> "$GITHUB_STEP_SUMMARY"
