@@ -31,9 +31,13 @@ jobs:
   devsecops:
     uses: Jubit-Pincy/devsecops-toolkit/.github/workflows/reusable.yml@main
     with:
-      weight_bugs:        ${{ github.event.inputs.weight_bugs || '3' }}
-      weight_vulns:       ${{ github.event.inputs.weight_vulns || '5' }}
-      weight_hotspots:    ${{ github.event.inputs.weight_hotspots || '2' }}
-      risk_threshold_low: ${{ github.event.inputs.risk_threshold_low || '10' }}
-      risk_threshold_med: ${{ github.event.inputs.risk_threshold_med || '30' }}
+      sonar_org:            jubit-pincy
+      azure_resource_group: rg-devsecops
+      azure_api_name:       devsecops-api-85826533
+      azure_webapp_name:    devsecops-webapp
+      weight_bugs:          ${{ github.event.inputs.weight_bugs || '3' }}
+      weight_vulns:         ${{ github.event.inputs.weight_vulns || '5' }}
+      weight_hotspots:      ${{ github.event.inputs.weight_hotspots || '2' }}
+      risk_threshold_low:   ${{ github.event.inputs.risk_threshold_low || '10' }}
+      risk_threshold_med:   ${{ github.event.inputs.risk_threshold_med || '30' }}
     secrets: inherit
