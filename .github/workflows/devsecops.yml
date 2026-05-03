@@ -40,4 +40,5 @@ jobs:
       weight_hotspots:      ${{ github.event.inputs.weight_hotspots || '2' }}
       risk_threshold_low:   ${{ github.event.inputs.risk_threshold_low || '10' }}
       risk_threshold_med:   ${{ github.event.inputs.risk_threshold_med || '30' }}
+      app_url:              https://devsecops-webapp.azurewebsites.net
     secrets: inherit
