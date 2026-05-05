@@ -20,5 +20,10 @@ namespace App.Services
 
             return await response.Content.ReadAsStringAsync();
         }
+        public string GetCityWeather(string city)
+        {
+            // BUG: No null check — throws NullReferenceException when city is null
+            return "Weather in " + city.ToUpper();
+        }
     }
 }
