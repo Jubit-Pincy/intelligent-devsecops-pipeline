@@ -39,5 +39,13 @@ namespace App.Controllers
             var md5 = System.Security.Cryptography.MD5.Create();
             byte[] hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(userInput));
         }
+        public int Divide(int a, int b)
+        {
+            if (b == 0)
+                return 0;
+            
+            b = 1; // BUG: condition already checked, this assignment is useless (S1854)
+            return a / b;
+        }
     }
 }

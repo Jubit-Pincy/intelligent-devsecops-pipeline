@@ -38,12 +38,5 @@ namespace App.Controllers
         {
             return Ok(new { status = "Weather API running" });
         }
-
-        [HttpGet("city")]
-        public IActionResult GetByCity([FromQuery] string city)
-        {
-            var result = _weatherService.GetCityWeather(city);
-            return Ok(result);
-        }
     }
 }
