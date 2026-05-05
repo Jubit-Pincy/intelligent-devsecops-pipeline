@@ -1,0 +1,202 @@
+[
+  {
+    "timestamp": "01-05-2026 16:39",
+    "risk_score": 100,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "01-05-2026 16:47",
+    "risk_score": 100,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "01-05-2026 16:57",
+    "risk_score": 34,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "01-05-2026 17:42",
+    "risk_score": 34,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "01-05-2026 17:53",
+    "risk_score": 34,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "01-05-2026 18:03",
+    "risk_score": 34,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "01-05-2026 18:09",
+    "risk_score": 34,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "01-05-2026 18:16",
+    "risk_score": 22,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 18:44",
+    "risk_score": 22,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 19:02",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 19:14",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 19:33",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 19:53",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 20:14",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 21:27",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 21:39",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 22:31",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 22:44",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 22:53",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 23:05",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "01-05-2026 23:23",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "02-05-2026 00:22",
+    "risk_score": 32,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "02-05-2026 00:31",
+    "risk_score": 32,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "02-05-2026 00:40",
+    "risk_score": 32,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "02-05-2026 00:55",
+    "risk_score": 32,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "02-05-2026 01:18",
+    "risk_score": 32,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "02-05-2026 01:28",
+    "risk_score": 32,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "02-05-2026 01:42",
+    "risk_score": 32,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "02-05-2026 02:11",
+    "risk_score": 27,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "02-05-2026 02:21",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "02-05-2026 04:35",
+    "risk_score": 70,
+    "level": "HIGH"
+  },
+  {
+    "timestamp": "02-05-2026 06:37",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "02-05-2026 06:44",
+    "risk_score": 20,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "04-05-2026 00:31",
+    "risk_score": 12,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "04-05-2026 01:23",
+    "risk_score": 14,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "04-05-2026 01:32",
+    "risk_score": 24,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "05-05-2026 09:17",
+    "risk_score": 19,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "05-05-2026 09:27",
+    "risk_score": 19,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "05-05-2026 11:23",
+    "risk_score": 13,
+    "level": "MEDIUM"
+  },
+  {
+    "timestamp": "05-05-2026 11:33",
+    "risk_score": 8,
+    "level": "LOW"
+  }
+]
