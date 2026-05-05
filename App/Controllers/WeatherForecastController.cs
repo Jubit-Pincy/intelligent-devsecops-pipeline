@@ -25,27 +25,20 @@ namespace App.Controllers
         });
     }
     }
-    public class DatabaseHelper
-    {
-        // Hardcoded credentials - will trigger sonar:S2068
-        private string connectionString = "Server=myserver;Database=mydb;User=admin;Password=SuperSecret123!";
+    // public class DatabaseHelper
+    // {
+    //     // Hardcoded credentials - will trigger sonar:S2068
+    //     private string connectionString = "Server=myserver;Database=mydb;User=admin;Password=SuperSecret123!";
         
-        public void ExecuteQuery(string userInput)
-        {
-            // SQL Injection - will trigger sonar:S3649
-            string query = "SELECT * FROM users WHERE name = '" + userInput + "'";
+    //     public void ExecuteQuery(string userInput)
+    //     {
+    //         // SQL Injection - will trigger sonar:S3649
+    //         string query = "SELECT * FROM users WHERE name = '" + userInput + "'";
             
-            // Weak hash - will trigger sonar:S4790
-            var md5 = System.Security.Cryptography.MD5.Create();
-            byte[] hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(userInput));
-        }
-        public int Divide(int a, int b)
-        {
-            if (b == 0)
-                return 0;
-            
-            b = 1; // BUG: condition already checked, this assignment is useless (S1854)
-            return a / b;
-        }
-    }
+    //         // Weak hash - will trigger sonar:S4790
+    //         var md5 = System.Security.Cryptography.MD5.Create();
+    //         byte[] hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(userInput));
+    //     }
+        
+    // }
 }

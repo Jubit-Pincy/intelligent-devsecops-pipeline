@@ -61,7 +61,7 @@ CMD ["python", "app.py"]
 FROM node:20-slim AS runtime-node
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --only=production --ignore-scripts
 COPY . .
 RUN adduser --disabled-password --gecos "" appuser && \
     chown -R appuser:appuser /app
